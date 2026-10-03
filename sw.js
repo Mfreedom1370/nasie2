@@ -1,3 +1,19 @@
+const CACHE_FILES = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./css/style.css",
+  "./js/app.js",
+  "./js/jdate.js",
+  "./js/parser.js",
+  "./js/store.js",
+  "./js/telegram.js",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./icon-192-maskable.png",
+  "./icon-512-maskable.png"
+];
+
 const CACHE='nasie-v2-cache-1';
 const CORE=[
  './',
