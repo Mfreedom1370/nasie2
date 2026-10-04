@@ -5,6 +5,6 @@
 <body><header><div class="hrow"><h1>دفتر نسیه</h1><button id="trb" onclick="trashView()">🗑</button></div><div id="total"></div></header>
 <main id="view"></main><div id="sheet" hidden></div><div id="toast" hidden></div>
 <div class="cmd"><input id="cmd" placeholder="مثلا: پنجاه هزار تومان بزن به حساب علی" enterkeyhint="go"><button id="mic">🎤</button><button id="go">ثبت</button></div>
-<nav><button data-t="dash">داشبورد</button><button data-t="list">مشتریان</button><button data-t="log">تغییرات</button><button data-t="ai">دستیار</button><button data-t="set">تنظیمات</button></nav>
-<script src="js/store.js"></script><script src="js/parser.js"></script><script src="js/telegram.js"></script><script src="js/app.js"></script>
-<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js')</script></body></html>
+<nav aria-label="ناوبری اصلی"><button data-t="dash" aria-label="داشبورد">داشبورد</button><button data-t="list" aria-label="مشتریان">مشتریان</button><button data-t="log" aria-label="تغییرات">تغییرات</button><button data-t="ai" aria-label="دستیار">دستیار</button><button data-t="set" aria-label="تنظیمات">تنظیمات</button></nav>
+<script src="js/store.js"></script><script src="js/parser.js"></script><script src="js/ledger.js"></script><script src="js/telegram.js"></script><script src="js/app.js"></script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{r.update();r.addEventListener('updatefound',()=>{const n=r.installing;n&&n.addEventListener('statechange',()=>{if(n.state==='installed'&&navigator.serviceWorker.controller&&window.toast)toast('نسخه‌ی جدید آماده شد؛ اپ را کامل ببند و دوباره باز کن')})})}).catch(()=>{}))</script></body></html>

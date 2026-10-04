@@ -1,40 +1,43 @@
 {
-  "id": "./",
-  "name": "دفتر نسیه",
-  "short_name": "نسیه",
-  "description": "دفتر نسیه و مدیریت بدهی مشتریان",
-  "lang": "fa",
-  "dir": "rtl",
-  "start_url": "./",
-  "scope": "./",
-  "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f4f3ee",
-  "theme_color": "#0f6b5c",
-  "icons": [
-    {
-      "src": "./icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./icon-192-maskable.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "./icon-512-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ]
+ "name": "دفتر نسیه",
+ "short_name": "نسیه",
+ "lang": "fa",
+ "dir": "rtl",
+ "start_url": "./index.html",
+ "display": "standalone",
+ "background_color": "#f4f3ee",
+ "theme_color": "#0f6b5c",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "maskable"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ],
+ "id": "./",
+ "scope": "./",
+ "description": "دفتر نسیه و بدهی مشتریان با دستور صوتی",
+ "categories": [
+  "finance",
+  "business"
+ ]
 }

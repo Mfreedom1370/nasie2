@@ -1,49 +1,24 @@
-const CACHE_FILES = [
-  "./",
-  "./index.html",
-  "./manifest.webmanifest",
-  "./css/style.css",
-  "./js/app.js",
-  "./js/jdate.js",
-  "./js/parser.js",
-  "./js/store.js",
-  "./js/telegram.js",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./icon-192-maskable.png",
-  "./icon-512-maskable.png"
-];
-
-const CACHE='nasie-v2-cache-1';
-const CORE=[
- './',
- './index.html',
- './css/style.css',
- './js/store.js',
- './js/parser.js',
- './js/telegram.js',
- './js/app.js',
- './js/jdate.js',
- './manifest.webmanifest',
- './icon-192.png',
- './icon-512.png'
-];
-self.addEventListener('install',e=>{
- e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()));
-});
-self.addEventListener('activate',e=>{
- e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
-});
+// Service Worker دفتر نسیه — Offline-first با نسخه‌ی کش.
+// برای انتشار نسخه‌ی جدید فقط عدد V را بالا ببر؛ کش نسخه‌های قبلی در activate پاک می‌شود.
+const V='nasie-v8';
+const CORE=['./','index.html','manifest.webmanifest','css/style.css','js/store.js','js/parser.js','js/ledger.js','js/telegram.js','js/app.js','icon-192.png','icon-512.png','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2'];
+const OPT=['js/vendor/xlsx.full.min.js','js/jdate.js'];   // اختیاری: اگر نبودند نصب خراب نشود
+const abs=p=>new URL(p,self.location.href).href;
+self.addEventListener('install',e=>e.waitUntil((async()=>{
+ const c=await caches.open(V);
+ await Promise.all(CORE.map(async u=>{const r=await fetch(abs(u),{cache:'reload'});if(!r.ok)throw new Error('precache '+u);await c.put(abs(u),r)}));
+ await Promise.all(OPT.map(u=>fetch(abs(u),{cache:'reload'}).then(r=>r.ok&&c.put(abs(u),r)).catch(()=>{})));
+ await self.skipWaiting()})()));
+self.addEventListener('activate',e=>e.waitUntil((async()=>{
+ for(const k of await caches.keys())if(k.startsWith('nasie-')&&k!==V)await caches.delete(k);
+ await self.clients.claim()})()));
+// استراتژی: کش اول (فوری و آفلاین) + به‌روزرسانی در پس‌زمینه. درخواست‌های خارجی (تلگرام، AI) دست نمی‌خورند.
 self.addEventListener('fetch',e=>{
- const u=new URL(e.request.url);
- if(u.origin!==location.origin)return;
- e.respondWith(caches.match(e.request).then(cached=>{
-   const network=fetch(e.request).then(r=>{
-     if(r.ok && e.request.method==='GET'){
-       const copy=r.clone(); caches.open(CACHE).then(c=>c.put(e.request,copy));
-     }
-     return r;
-   }).catch(()=>cached);
-   return cached||network;
- }));
-});
+ const r=e.request;if(r.method!=='GET')return;
+ if(new URL(r.url).origin!==new URL(self.location.href).origin)return;
+ const key=r.mode==='navigate'?abs('index.html'):r.url;
+ e.respondWith((async()=>{
+  const cache=await caches.open(V),hit=await cache.match(key,{ignoreSearch:true});
+  const net=fetch(r.mode==='navigate'?key:r).then(res=>{if(res&&res.ok)cache.put(key,res.clone());return res}).catch(()=>null);
+  if(hit){e.waitUntil(net);return hit}
+  return(await net)||new Response('آفلاین',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}})})())});
