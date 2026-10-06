@@ -87,3 +87,17 @@ nav button{flex:1;background:none;box-shadow:none;-webkit-backdrop-filter:none;b
 .intro .ident h1{animation:fadeRise .7s var(--ease) .5s both}.intro .ident .sub{animation:fadeRise .7s var(--ease) .58s both}.intro #total{animation:fadeRise .7s var(--ease) .66s both}
 .intro .kpis>div{animation:fadeRise .7s var(--ease) calc(.74s + var(--j,0)*.06s) both}.intro main>.box2,.intro main>.card{animation:fadeRise .7s var(--ease) calc(.94s + var(--i,0)*.06s) both}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ---- کارت تایید ثبت (دستور صوتی) ---- */
+.seg{display:flex;gap:10px;margin:14px 0 4px}
+.seg label{flex:1;margin:0;position:relative}
+.seg input{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+.seg span{display:flex;align-items:center;justify-content:center;height:62px;border-radius:22px;font-size:22px;font-weight:500;color:var(--muted);background:var(--card);box-shadow:inset 0 0 0 1px var(--bd);transition:all .25s var(--ease)}
+.seg .s-credit input:checked+span{color:var(--bad);background:rgba(255,130,114,.16);box-shadow:inset 0 0 0 2px var(--bad)}
+.seg .s-pay input:checked+span{color:var(--ok);background:rgba(134,212,147,.16);box-shadow:inset 0 0 0 2px var(--ok)}
+.cf-amt{display:flex;align-items:baseline;justify-content:center;gap:8px;margin:10px 0 6px}.cf-amt b{font-size:42px;font-weight:700;line-height:1.2}.cf-amt span{font-size:16px;color:var(--muted)}
+.cf label.opt{font-size:18px;padding:15px 16px;border-radius:20px;margin:8px 0}.cf label.opt small{font-size:14px}
+.cf label.opt input[type=radio],.cf label.opt input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--ac)}
+.cf input#nn,.cf input#na,.cf input#dd{font-size:17px;padding:14px 16px}
+.cf-foot{position:sticky;bottom:0;z-index:3;display:flex;gap:12px;margin:14px -18px -22px;padding:14px 18px calc(16px + env(safe-area-inset-bottom,0px));background:rgba(31,14,9,.42);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+.cf-foot button{flex:1;height:58px;border-radius:22px;font-size:19px;font-weight:500}.cf-foot .pri{flex:1.6}

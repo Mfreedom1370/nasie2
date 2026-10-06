@@ -158,10 +158,10 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  if(!r.name&&!r.candidates.length)return toast('نام مشتری تشخیص داده نشد');
  cmd=r;r.vid=Store.vlog({rawText:r.rawText,type:r.type,amount:r.amount,customer:r.customerName,confidence:r.confidence,source:r.source,result:'pending'});
  const cs=r.candidates,sure=!!r.customerId,one=cs.length===1&&!sure;
- sheet(`<h2>تایید ثبت ${r.source==='voice'?'🎤':''}</h2><small>«${esc(r.rawText)}» · اطمینان ${fmt(r.confidence*100)}٪</small>
+ sheet(`<div class="cf"><h2>تایید ثبت ${r.source==='voice'?'🎤':''}</h2><small>«${esc(r.rawText)}» · اطمینان ${fmt(r.confidence*100)}٪</small>
  ${r.needsConfirmation?`<div class="bk" style="background:var(--warn)">نیاز به بررسی: ${esc(r.reasons.join(' · ')||'لطفا موارد را بررسی کن')}</div>`:''}
- <div class="row"><label class="opt"><input type="radio" name="ty" value="credit" ${r.type==='credit'?'checked':''}> نسیه</label><label class="opt"><input type="radio" name="ty" value="payment" ${r.type==='payment'?'checked':''}> پرداخت</label></div>
- <p><b>${fmt(r.amount)}</b> تومان</p>
+ <div class="seg"><label class="s-credit"><input type="radio" name="ty" value="credit" ${r.type==='credit'?'checked':''}><span>نسیه</span></label><label class="s-pay"><input type="radio" name="ty" value="payment" ${r.type==='payment'?'checked':''}><span>پرداخت</span></label></div>
+ <div class="cf-amt"><b>${fmt(r.amount)}</b><span>تومان</span></div>
  ${r.colloquial?`<label class="opt"><input type="checkbox" id="kk" checked> «${fmt(r.amountRaw)} تومن» یعنی ${fmt(r.amountRaw*1000)} تومان</label>`:''}
  <label>${one?`منظورتان «${esc(cs[0].name)}» است؟`:cs.length&&!sure?'منظورتان کدام است؟':'مشتری'}</label>
  ${cs.map((x,i)=>`<label class="opt"><input type="radio" name="cs" value="${i}" ${sure&&i==0?'checked':''}> ${esc(x.name)}${x.alias?' «'+esc(x.alias)+'»':''} <small>مانده ${fmt(Store.bal(x.id))}</small></label>`).join('')}
@@ -169,7 +169,7 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  <input id="nn" placeholder="نام" value="${esc(cs.length?'':r.name)}"><input id="na" placeholder="اسم مستعار (اختیاری)" style="margin-top:6px">
  <label class="opt"><input type="checkbox" id="ng" ${r.guest?'checked':''}> کاسب موقت (مهمان)</label>
  <input id="dd" type="number" inputmode="numeric" placeholder="مهلت پرداخت (روز) — خالی = پیش‌فرض" value="${r.dueDays||''}">
- <div class="row"><button class="pri" onclick="okCmd()">تایید</button><button onclick="cancelCmd()">لغو</button></div>`);cmd.open=true}
+ </div><div class="cf-foot"><button class="glass" onclick="cancelCmd()">لغو</button><button class="pri" onclick="okCmd()">تایید</button></div>`);cmd.open=true}
 let cmd=null;
 function cancelCmd(){if(cmd)Store.vset(cmd.vid,'cancelled');closeSheet()}
 function okCmd(){const r=cmd,v=document.querySelector('input[name=cs]:checked')?.value,ty=document.querySelector('input[name=ty]:checked').value;let c;

@@ -1,6 +1,6 @@
 // Service Worker دفتر نسیه — Offline-first با نسخه‌ی کش.
 // برای انتشار نسخه‌ی جدید فقط عدد V را بالا ببر؛ کش نسخه‌های قبلی در activate پاک می‌شود.
-const V='nasie-v10';
+const V='nasie-v11';
 const CORE=['./','index.html','manifest.webmanifest','css/style.css','js/store.js','js/parser.js','js/ledger.js','js/liquid.js','js/telegram.js','js/app.js','icon-192.png','icon-512.png','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2'];
 const OPT=['js/vendor/xlsx.full.min.js','js/jdate.js'];   // اختیاری: اگر نبودند نصب خراب نشود
 const abs=p=>new URL(p,self.location.href).href;
