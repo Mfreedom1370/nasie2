@@ -1,10 +1,15 @@
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f6b5c"><link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#180a06"><link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png"><link rel="stylesheet" href="css/style.css"><title>دفتر نسیه</title></head>
-<body><header><div class="hrow"><h1>دفتر نسیه</h1><button id="trb" onclick="trashView()">🗑</button></div><div id="total"></div></header>
-<main id="view"></main><div id="sheet" hidden></div><div id="toast" hidden></div>
+<body class="intro" data-tab="dash"><div class="phone"><div class="screen" id="screen">
+<section class="hero"><div class="hero-bg"></div><div class="topbar">
+ <button class="glass circle" data-liquid onclick="backup()" aria-label="بکاپ اکسل">📦</button>
+ <button class="glass circle" data-liquid onclick="trashView()" aria-label="سطل زباله">🗑</button></div></section>
+<section class="ident"><h1>دفتر نسیه</h1><p class="sub">دفتر بدهی و نسیه‌ی مشتریان</p><div id="total" class="glass pill" data-liquid></div></section>
+<main id="view"></main></div>
+<div id="sheet" hidden></div><div id="toast" hidden></div>
 <div class="cmd"><input id="cmd" placeholder="مثلا: پنجاه هزار تومان بزن به حساب علی" enterkeyhint="go"><button id="mic">🎤</button><button id="go">ثبت</button></div>
-<nav aria-label="ناوبری اصلی"><button data-t="dash" aria-label="داشبورد">داشبورد</button><button data-t="list" aria-label="مشتریان">مشتریان</button><button data-t="log" aria-label="تغییرات">تغییرات</button><button data-t="ai" aria-label="دستیار">دستیار</button><button data-t="set" aria-label="تنظیمات">تنظیمات</button></nav>
-<script src="js/store.js"></script><script src="js/parser.js"></script><script src="js/ledger.js"></script><script src="js/telegram.js"></script><script src="js/app.js"></script>
+<nav><button data-t="dash">داشبورد</button><button data-t="list">مشتریان</button><button data-t="log">تغییرات</button><button data-t="ai">دستیار</button><button data-t="set">تنظیمات</button></nav></div>
+<script src="js/store.js"></script><script src="js/parser.js"></script><script src="js/ledger.js"></script><script src="js/telegram.js"></script><script src="js/liquid.js"></script><script src="js/app.js"></script>
 <script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{r.update();r.addEventListener('updatefound',()=>{const n=r.installing;n&&n.addEventListener('statechange',()=>{if(n.state==='installed'&&navigator.serviceWorker.controller&&window.toast)toast('نسخه‌ی جدید آماده شد؛ اپ را کامل ببند و دوباره باز کن')})})}).catch(()=>{}))</script></body></html>

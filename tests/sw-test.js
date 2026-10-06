@@ -15,7 +15,7 @@ function makeEnv(src,online){const store=new Map(),L={};let net=online;
  const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8'),m=sw.match(/const V='([^']+)'/);ok(!!m&&sw.length>500,'sw.js خالی نیست و V دارد');
  const A=makeEnv(sw,true);await A.install();await A.activate();
  const cached=[...A.store.get(m[1]).keys()].map(u=>u.replace(BASE,''));
- for(const f of['','index.html','manifest.webmanifest','css/style.css','js/store.js','js/parser.js','js/ledger.js','js/telegram.js','js/app.js','icon-192.png','icon-512.png','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2','js/vendor/xlsx.full.min.js'])ok(cached.includes(f),'در کش نیست: '+f);
+ for(const f of['','index.html','manifest.webmanifest','css/style.css','js/store.js','js/parser.js','js/ledger.js','js/liquid.js','js/telegram.js','js/app.js','icon-192.png','icon-512.png','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2','js/vendor/xlsx.full.min.js'])ok(cached.includes(f),'در کش نیست: '+f);
  ok(A.self.skipped&&A.self.claimed,'skipWaiting و claim');
  A.setNet(false);// ---- آفلاین ----
  let r=await A.req(BASE+'index.html','navigate');ok(r&&r.status===200&&(await r.text()).includes('دفتر نسیه'),'index.html آفلاین باز می‌شود');

@@ -15,9 +15,9 @@ function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeou
 function sheet(h){if(cmd)cmd.open=false;$('#sheet').innerHTML=`<div class="sh"><div class="xrow"><button class="x" onclick="dismiss()" aria-label="بستن">✕</button></div><div class="box">${h}</div></div>`;$('#sheet').hidden=false}
 function dismiss(){if(cmd&&cmd.open)cancelCmd();else closeSheet()}
 function closeSheet(){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;render()}
-function anim(){document.querySelectorAll('[data-n]').forEach(el=>{const t=+el.dataset.n,s=performance.now();(function f(n){const p=Math.min(1,(n-s)/800);el.textContent=fmt(t*(1-(1-p)**3));if(p<1)requestAnimationFrame(f)})(s)});
- document.querySelectorAll('main>*,main .kpis>div').forEach((el,i)=>el.style.setProperty('--i',Math.min(i,14)))}
-function render(){$('#total').innerHTML=`جمع بدهی‌ها<b data-n="${Store.total()}"></b> تومان`;
+function anim(){document.querySelectorAll('[data-n]').forEach(el=>{const t=+el.dataset.n,s=performance.now();el.classList.toggle('lg',t>=1e7);(function f(n){const p=Math.min(1,(n-s)/800);el.textContent=fmt(t*(1-(1-p)**3));if(p<1)requestAnimationFrame(f)})(s)});
+ document.querySelectorAll('main>*').forEach((el,i)=>el.style.setProperty('--i',Math.min(i,12)));document.querySelectorAll('main .kpis').forEach(k=>[...k.children].forEach((el,j)=>el.style.setProperty('--j',j)))}
+function render(){document.body.dataset.tab=tab;$('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b data-n="${Store.total()}"></b><span class="tl">تومان</span>`;
  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
  $('#view').innerHTML=({dash:vDash,list:vList,log:vLog,ai:vAI,set:vSet})[tab]();document.body.classList.toggle('ai',tab==='ai');anim()}
 // ---------- داشبورد ----------
@@ -28,9 +28,9 @@ function vDash(){const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=c
  gs=db.filter(x=>x.c.guest).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays||age(b.c)-age(a.c)),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1,now=new Date(),
  bk=now.getHours()>=Store.d.set.bkHour&&Store.d.set.lastBk!==now.toDateString();
  const m=Math.max(...ms.flatMap(x=>[x.d,x.p]),1),bars=ms.map((x,i)=>`<rect x="${i*48+8}" y="${95-x.d/m*80}" width="16" height="${x.d/m*80}" rx="3" fill="var(--bad)"/><rect x="${i*48+25}" y="${95-x.p/m*80}" width="16" height="${x.p/m*80}" rx="3" fill="var(--ok)"/><text x="${i*48+25}" y="110" text-anchor="middle" font-size="10" fill="var(--mut)">${x.l}</text>`).join('');
- const k=(c,l,v,f)=>`<div class="${c}" onclick="listBy('${f}')"><small>${l}</small><b data-n="${v}"></b></div>`;
+ const k=(c,l,v,f,ic)=>`<div class="${c}" onclick="listBy('${f}')"><span class="ic">${ic}</span><small>${l}</small><b data-n="${v}"></b></div>`;
  return`${bk?'<div class="bk" onclick="backup()">📦 بکاپ امروز هنوز گرفته نشده — برای گرفتن لمس کن</div>':''}
- <div class="kpis">${k('k-bad','جمع بدهی‌ها',Store.total(),'debtors')}${k('','تعداد بدهکاران',db.length,'debtors')}${k('k-warn','عقب‌افتاده',late.length,'late')}${k('k-bad','بالای حد مجاز',over.length,'over')}${k('','نسیه‌ی این ماه',cur.d,'mDebt')}${k('k-ok','دریافتی این ماه',cur.p,'mPay')}</div>
+ <div class="kpis">${k('k-bad','جمع بدهی‌ها',Store.total(),'debtors','💰')}${k('','تعداد بدهکاران',db.length,'debtors','👥')}${k('k-warn','عقب‌افتاده',late.length,'late','⏰')}${k('k-bad','بالای حد مجاز',over.length,'over','🚨')}${k('','نسیه‌ی این ماه',cur.d,'mDebt','🧾')}${k('k-ok','دریافتی این ماه',cur.p,'mPay','💵')}</div>
  ${riskBox()}
  <div class="box2 gbox"><h3>👤 کاسب‌های موقت (بیشترین دیرکرد اول)</h3>${gs.map(x=>`<div class="lr" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)} <small>${dueLbl(x.c)[0]||fmt(age(x.c))+' روز'}</small></span><b class="gv">${fmt(x.b)}</b></div>`).join('')||'<small>کاسب موقتی نیست</small>'}</div>
  <div class="box2"><h3>نسیه و دریافتی ماهانه</h3><svg class="sv" viewBox="0 0 290 118">${bars}</svg><div class="lg"><span><i style="background:var(--bad)"></i>نسیه</span><span><i style="background:var(--ok)"></i>دریافتی</span></div></div>
@@ -142,7 +142,7 @@ async function askAI(){const q=$('#aq').value.trim(),s=Store.d.set;if(!q)return;
   body:JSON.stringify({model:s.aiModel,temperature:.3,messages:[{role:'system',content:sys},...chat.slice(0,-1).slice(-8).map(m=>({role:m.r,content:A(m.c)}))]})});
   const j=await r.json();chat[chat.length-1].c=r.ok?(s.aiAnon?deAnon(j.choices[0].message.content):j.choices[0].message.content):'خطا: '+(j.error?.message||r.status)}
  catch(e){chat[chat.length-1].c='اتصال به سرویس برقرار نشد؛ اینترنت/VPN را بررسی کن یا سرویس دیگری انتخاب کن.'}
- render();window.scrollTo(0,document.body.scrollHeight)}
+ render();$('#screen').scrollTop=$('#screen').scrollHeight}
 const AIP={openai:['https://api.openai.com/v1','gpt-4o-mini'],gemini:['https://generativelanguage.googleapis.com/v1beta/openai','gemini-2.5-flash'],openrouter:['https://openrouter.ai/api/v1','openrouter/free']};
 function aiPreset(k){if(AIP[k]){setv('aiUrl',AIP[k][0]);setv('aiModel',AIP[k][1]);render()}}
 // ---------- دستور صوتی/متنی ----------
@@ -193,4 +193,4 @@ function listen(){const r=new SR();rec=r;r.lang='fa-IR';r.interimResults=true;r.
   if(R.isFinal){let best=R[0].transcript,bs=-1,bc=R[0].confidence;for(let i=0;i<R.length;i++){const s=score(parseCmd(R[i].transcript,{source:'voice',stt:R[i].confidence}));if(s>bs){bs=s;best=R[i].transcript;bc=R[i].confidence}}$('#cmd').value=best;run(best,{source:'voice',stt:bc})}};
  try{r.start()}catch(e){}}
 if(!SR)$('#mic').hidden=true;else $('#mic').onclick=()=>{if(on)return rec.stop();retried=false;listen()};
-render();sweep();
+render();sweep();if(window.Liquid)Liquid.init();setTimeout(()=>document.body.classList.remove('intro'),3300);
