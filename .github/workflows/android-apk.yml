@@ -1,0 +1,88 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'test = آزمایشی / release = نسخه اصلی با کلید امضا'
+        type: choice
+        default: test
+        options: [test, release]
+permissions:
+  contents: read
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NASIE_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Check accounting and Android adapter
+        run: |
+          node tests/run-tests.js
+          node tests/voice-test.js
+          node tests/safety-test.js
+          node tests/ui-test.js
+          node tests/sw-test.js
+          node tests/android-test.cjs
+      - name: Bundle offline assets
+        run: node scripts/prepare-android.cjs
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Restore release signing key
+        if: inputs.build_type == 'release'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo 'Release needs the four ANDROID signing secrets. See README-APK.md.'
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/nasie-release.jks"
+      - name: Build test APK (sample accounts only)
+        if: inputs.build_type == 'test'
+        working-directory: android
+        run: gradle --no-daemon assembleDebug lintDebug
+      - name: Build signed release APK
+        if: inputs.build_type == 'release'
+        working-directory: android
+        env:
+          NASIE_KEYSTORE: ${{ runner.temp }}/nasie-release.jks
+          NASIE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          NASIE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          NASIE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon assembleRelease lintRelease
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nasie-${{ inputs.build_type }}-apk
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Android lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-report
+          path: android/app/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+      - name: Remove temporary signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nasie-release.jks"
