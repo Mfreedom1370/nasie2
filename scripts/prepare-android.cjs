@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const dest = path.join(root, 'android/app/src/main/assets/www');
-const files = ['index.html','manifest.webmanifest','icon-192.png','icon-512.png',
+const files = ['PS/background.png','index.html','manifest.webmanifest','icon-192.png','icon-512.png',
  'css/style.css','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2',
  'js/store.js','js/safety.js','js/jdate.js','js/parser.js','js/ledger.js','js/telegram.js',
  'js/liquid.js','js/app.js','js/vendor/xlsx.full.min.js','js/android.js'];

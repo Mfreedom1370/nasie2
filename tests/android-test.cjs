@@ -26,11 +26,11 @@ native.guard(store,()=>{});context.document.visibilityState='hidden';events.visi
 assert.throws(()=>store.addC('ممنوع در پس‌زمینه'),e=>e.storeError);
 context.document.visibilityState='visible';events.visibilitychange();assert.equal(store.bal(c.id),125000);
 const r=new context.SpeechRecognition(),seen=[];
-r.onstart=()=>seen.push('start');r.onresult=e=>seen.push(e.results[0][0].transcript);r.onend=()=>seen.push('end');
-r.start();const id=speechCalls[0][1];native.speech(id,'start',null);
+r.onfallback=()=>seen.push('fallback');r.onstart=()=>seen.push('start');r.onresult=e=>seen.push(e.results[0][0].transcript);r.onend=()=>seen.push('end');
+r.start();const id=speechCalls[0][1];native.speech(id,'start',null);native.speech(id,'fallback',null);
 native.speech(id,'result',{texts:['علی پنجاه هزار تومان نسیه','علی پانصد هزار تومان نسیه'],confidence:[.9,.3]});
 native.speech(id,'end',null);native.speech(id,'result',{texts:['late event'],confidence:[]});
-assert.deepEqual(seen,['start','علی پنجاه هزار تومان نسیه','end']);
+assert.deepEqual(seen,['start','fallback','علی پنجاه هزار تومان نسیه','end']);
 const cancelled=new context.SpeechRecognition();cancelled.start();cancelled.abort();
 const next=new context.SpeechRecognition();next.start();next.stop();assert.equal(speechCalls.at(-1)[0],'stop');
 console.log('PASS: Android storage rollback, UTF-8 export, lifecycle guard, speech alternatives and stale events.');

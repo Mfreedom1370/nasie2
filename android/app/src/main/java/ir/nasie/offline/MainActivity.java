@@ -32,7 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
 public final class MainActivity extends Activity {
- private static final int PICK_FILE=40, SAVE_FILE=41, MIC_PERMISSION=42;
+ private static final int PICK_FILE=40, SAVE_FILE=41, MIC_PERMISSION=42, SYSTEM_SPEECH=43;
  private static final String HOME="https://appassets.androidplatform.net/assets/www/index.html";
  private WebView web;
  private AtomicFile ledgerFile;
@@ -44,6 +44,7 @@ public final class MainActivity extends Activity {
  private int speechId=0;
  private volatile boolean storageFailed=false;
  private boolean microphonePermissionPending=false;
+ private boolean systemSpeechOpen=false;
 
  @Override public void onCreate(Bundle state) {
   super.onCreate(state);
@@ -56,7 +57,7 @@ public final class MainActivity extends Activity {
    while(keys.hasNext()){String key=keys.next();if(!validKey(key)||!(storageState.get(key) instanceof String))throw new IllegalStateException("Invalid ledger container");}
   }catch(Exception e){storageFailed=true;storageState=new JSONObject();}
   web=new WebView(this);
-  FrameLayout frame=new FrameLayout(this);frame.addView(web);setContentView(frame);
+  FrameLayout frame=new FrameLayout(this);frame.setBackgroundColor(0xff07151f);frame.addView(web);setContentView(frame);
   frame.setOnApplyWindowInsetsListener((view,insets)->{
    view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),
     insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
@@ -157,7 +158,7 @@ public final class MainActivity extends Activity {
  }
  private void beginSpeech(int id){
   if(speechId!=0)endSpeech("aborted");speechId=id;
-  if(Build.VERSION.SDK_INT<31||!SpeechRecognizer.isOnDeviceRecognitionAvailable(this)){endSpeech("offline-unavailable");return;}
+  if(Build.VERSION.SDK_INT<31||!SpeechRecognizer.isOnDeviceRecognitionAvailable(this)){offerSystemSpeech(id);return;}
   if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
    microphonePermissionPending=true;
    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC_PERMISSION);return;
@@ -165,7 +166,7 @@ public final class MainActivity extends Activity {
   try{
    speech=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
    speech.setRecognitionListener(new RecognitionListener(){
-    public void onReadyForSpeech(Bundle b){emitSpeech(id,"start",null);}
+    public void onReadyForSpeech(Bundle b){if(speech!=null&&speechId==id)emitSpeech(id,"start",null);}
     public void onBeginningOfSpeech(){}
     public void onRmsChanged(float rms){}
     public void onBufferReceived(byte[] buffer){}
@@ -173,15 +174,15 @@ public final class MainActivity extends Activity {
     public void onPartialResults(Bundle b){}
     public void onEvent(int event,Bundle b){}
     public void onError(int error){
-     if(speechId!=id)return;
+     if(speech==null||speechId!=id)return;
      String code=error==SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS?"not-allowed":
       error==SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED||error==SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE?"language-not-supported":
       error==SpeechRecognizer.ERROR_NO_MATCH||error==SpeechRecognizer.ERROR_SPEECH_TIMEOUT?"no-speech":
       error==SpeechRecognizer.ERROR_AUDIO?"audio-capture":"offline-unavailable";
-     endSpeech(code);
+     if(code.equals("language-not-supported")||code.equals("offline-unavailable"))offerSystemSpeech(id);else endSpeech(code);
     }
     public void onResults(Bundle b){
-     if(speechId!=id)return;
+     if(speech==null||speechId!=id)return;
      ArrayList<String> texts=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
      float[] scores=b.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
      try{
@@ -197,8 +198,26 @@ public final class MainActivity extends Activity {
     .putExtra(RecognizerIntent.EXTRA_LANGUAGE,"fa-IR")
     .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5).putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,true);
    speech.startListening(intent);
-   web.postDelayed(()->{if(speechId==id)endSpeech("no-speech");},35000);
-  }catch(Exception e){endSpeech("offline-unavailable");}
+   web.postDelayed(()->{if(speech!=null&&speechId==id)endSpeech("no-speech");},35000);
+  }catch(Exception e){offerSystemSpeech(id);}
+ }
+ private void offerSystemSpeech(int id){
+  if(speechId!=id)return;
+  if(speech!=null){SpeechRecognizer old=speech;speech=null;speechId=0;old.cancel();old.destroy();speechId=id;}
+  emitSpeech(id,"fallback",null);
+  new AlertDialog.Builder(this).setTitle("گفتار فارسی")
+   .setMessage("مدل آفلاین فارسی روی این گوشی آماده نیست. سرویس گفتار سیستم می‌تواند فارسی را دریافت کند، اما ممکن است صدا را برای پردازش اینترنتی ارسال کند. دفتر حساب‌ها داخل برنامه می‌ماند.")
+   .setPositiveButton("استفاده از سرویس گوشی",(dialog,which)->{
+    if(speechId!=id)return;
+    Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+     .putExtra(RecognizerIntent.EXTRA_LANGUAGE,"fa-IR").putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5)
+     .putExtra(RecognizerIntent.EXTRA_PROMPT,"دستور فارسی را بگو؛ ثبت فقط پس از تأیید تو انجام می‌شود");
+    try{systemSpeechOpen=true;startActivityForResult(intent,SYSTEM_SPEECH);}
+    catch(Exception e){systemSpeechOpen=false;endSpeech("service-not-allowed");}
+   })
+   .setNegativeButton("نوشتن دستی",(dialog,which)->{if(speechId==id)endSpeech("aborted");})
+   .setOnCancelListener(dialog->{if(speechId==id)endSpeech("aborted");}).show();
  }
  private void endSpeech(String error){
   int id=speechId;speechId=0;
@@ -221,6 +240,14 @@ public final class MainActivity extends Activity {
  }
  @Override protected void onActivityResult(int request,int result,Intent data){
   super.onActivityResult(request,result,data);
+  if(request==SYSTEM_SPEECH){
+   systemSpeechOpen=false;int id=speechId;
+   if(id!=0&&result==RESULT_OK&&data!=null){
+    ArrayList<String> texts=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+    try{if(texts!=null&&!texts.isEmpty())emitSpeech(id,"result",new JSONObject().put("texts",new JSONArray(texts)).put("confidence",new JSONArray()));}catch(Exception ignored){}
+    endSpeech(null);
+   }else endSpeech("aborted");
+  }
   if(request==PICK_FILE&&fileCallback!=null){
    fileCallback.onReceiveValue(result==RESULT_OK&&data!=null&&data.getData()!=null?new Uri[]{data.getData()}:null);fileCallback=null;
   }
@@ -238,7 +265,7 @@ public final class MainActivity extends Activity {
   }
  }
  @Override protected void onPause(){
-  if(!microphonePermissionPending)endSpeech("aborted");
+  if(!microphonePermissionPending&&!systemSpeechOpen)endSpeech("aborted");
   web.evaluateJavascript("if(typeof Store!=='undefined'&&Store.releaseWriter)Store.releaseWriter()",null);
   web.onPause();super.onPause();
  }

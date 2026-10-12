@@ -34,6 +34,7 @@
  window.NasieAndroid.speech=(id,type,payload)=>{
   const r=session;if(!r||r.id!==id)return;
   if(type==='start')r.onstart?.();
+  if(type==='fallback')r.onfallback?.();
   if(type==='result'){
    const alternatives=payload.texts.map((transcript,i)=>({transcript,confidence:Math.max(0,payload.confidence?.[i]||0)}));
    alternatives.isFinal=true;r.onresult?.({results:[alternatives]});

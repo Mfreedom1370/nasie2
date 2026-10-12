@@ -22,6 +22,8 @@ assert.equal(execute('Store.writeAllowed'),true);
 execute("const customer=Store.addC('آزمایشی');");
 query('#ma').value='10000';query('#md').value='10';query('#mn').value='خرید';
 execute('manual(customer.id,1)');assert.equal(execute('Store.bal(customer.id)'),10000);
+execute('profile(customer.id)');assert.ok(query('#sheet').innerHTML.includes('ph customer-header'));
+execute('editForm(customer.id)');assert.ok(query('#sheet').innerHTML.includes('customer-header'));
 query('#ma').value='-500';execute('manual(customer.id,1)');assert.equal(execute('Store.bal(customer.id)'),10000);
 execute("run('آزمایشی پنجاه هزار تومان پرداخت',{source:'voice'})");
 query('input[name=cs]:checked').value='0';query('input[name=ty]:checked').value='payment';

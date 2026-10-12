@@ -1,4 +1,4 @@
-// nasie-release:14
+// nasie-release:15
 Store.load();
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
@@ -32,19 +32,33 @@ function months(){const out=[],today=J.today();
  for(let i=5;i>=0;i--){let y=today[0],m=today[1]-i;while(m<1){m+=12;y--}
   const s=J.ts([y,m,1],0),e=J.ts(m===12?[y+1,1,1]:[y,m+1,1],0),t=Store.live().filter(x=>x.ts>=s&&x.ts<e&&x.source!=='import');
   out.push({l:new Date(s).toLocaleDateString('fa-IR',{month:'short'}),d:t.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0),p:-t.filter(x=>x.amt<0).reduce((a,x)=>a+x.amt,0),net:Store.live().filter(x=>x.ts<e).reduce((a,x)=>a+x.amt,0)})}return out}
-function vDash(){const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),over=db.filter(x=>x.b>lim(x.c)),late=db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays),
- gs=db.filter(x=>x.c.guest).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays||age(b.c)-age(a.c)),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1,now=new Date(),
- bk=now.getHours()>=Store.d.set.bkHour&&Store.d.set.lastBk!==now.toDateString();
- const m=Math.max(...ms.flatMap(x=>[x.d,x.p]),1),bars=ms.map((x,i)=>`<rect x="${i*48+8}" y="${95-x.d/m*80}" width="16" height="${x.d/m*80}" rx="3" fill="var(--bad)"/><rect x="${i*48+25}" y="${95-x.p/m*80}" width="16" height="${x.p/m*80}" rx="3" fill="var(--ok)"/><text x="${i*48+25}" y="110" text-anchor="middle" font-size="10" fill="var(--mut)">${x.l}</text>`).join('');
- const k=(c,l,v,f,ic)=>`<div class="${c}" onclick="listBy('${f}')"><span class="ic">${ic}</span><small>${l}</small><b data-n="${v}"></b></div>`;
- return`${bk?'<div class="bk" onclick="backup()">📦 بکاپ امروز هنوز گرفته نشده — برای گرفتن لمس کن</div>':''}
- <div class="kpis">${k('k-bad','جمع بدهی‌ها',Store.total(),'debtors','💰')}${k('','تعداد بدهکاران',db.length,'debtors','👥')}${k('k-warn','عقب‌افتاده',late.length,'late','⏰')}${k('k-bad','بالای حد مجاز',over.length,'over','🚨')}${k('','نسیه‌ی این ماه',cur.d,'mDebt','🧾')}${k('k-ok','دریافتی این ماه',cur.p,'mPay','💵')}</div>
- ${riskBox()}
- <div class="box2 gbox"><h3>👤 کاسب‌های موقت (بیشترین دیرکرد اول)</h3>${gs.map(x=>`<div class="lr" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)} <small>${dueLbl(x.c)[0]||fmt(age(x.c))+' روز'}</small></span><b class="gv">${fmt(x.b)}</b></div>`).join('')||'<small>کاسب موقتی نیست</small>'}</div>
- <div class="box2"><h3>نسیه و دریافتی ماهانه</h3><svg class="sv" viewBox="0 0 290 118">${bars}</svg><div class="lg"><span><i style="background:var(--bad)"></i>نسیه</span><span><i style="background:var(--ok)"></i>دریافتی</span></div></div>
- <div class="box2"><h3>بیشترین بدهکاران</h3>${top.map(x=>`<div class="bar" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)}</span><i style="width:${x.b/mx*100}%"></i><b>${fmt(x.b)}</b></div>`).join('')||'<p class="empty">داده‌ای نیست</p>'}</div>
- <div class="box2"><h3>عقب‌افتاده‌ها (بیشترین تاخیر)</h3>${late.slice(0,6).map(x=>`<div class="lr" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)} <small>${dueLbl(x.c)[0]||fmt(age(x.c))+' روز'}</small></span><b class="warn">${fmt(x.b)}</b></div>`).join('')||'<small>موردی نیست 👌</small>'}</div>
- <div class="box2"><h3>روند مانده‌ی کل</h3>${trend(ms)}</div>`}
+function uiIcon(name){
+ const paths={home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',people:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M17 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-4',chart:'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',spark:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',settings:'M4 7h16 M4 17h16 M8 4v6 M16 14v6',clock:'M12 8v5l3 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',arrow:'M7 17L17 7 M7 7h10v10',wallet:'M3 6h18v14H3z M3 6V3h15v3 M16 11h5v5h-5z'};
+ return '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.chart)+'"/></svg>';
+}
+function vDash(){
+ const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),over=db.filter(x=>x.b>lim(x.c));
+ const late=db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays);
+ const gs=db.filter(x=>x.c.guest).sort((a,b)=>age(b.c)-age(a.c)),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1;
+ const bk=new Date().getHours()>=Store.d.set.bkHour&&Store.d.set.lastBk!==new Date().toDateString();
+ const maximum=Math.max(...ms.flatMap(x=>[x.d,x.p]),1);
+ const bars=ms.map((x,i)=>`<rect x="${i*48+8}" y="${95-x.d/maximum*80}" width="16" height="${x.d/maximum*80}" rx="4" fill="var(--bad)"/><rect x="${i*48+26}" y="${95-x.p/maximum*80}" width="16" height="${x.p/maximum*80}" rx="4" fill="var(--ok)"/><text x="${i*48+24}" y="114" text-anchor="middle" font-size="10" fill="var(--mut)">${x.l}</text>`).join('');
+ const metric=(label,value,target,icon,tone='')=>`<button class="metric ${tone}" onclick="listBy('${target}')"><span>${uiIcon(icon)}${label}</span><b>${fmt(value)}</b><small>${target==='debtors'?'مشتری':'تومان'}</small></button>`;
+ return `<div class="dashboard-layout">
+ <section class="dash-story"><span class="eyebrow">${uiIcon('wallet')} دفتر حساب‌های مغازه</span>
+ <h2>حساب‌ها روشن،<br>خیالت آسوده.</h2><p>نمای امروزِ نسیه‌ها و دریافتی‌ها؛ همهٔ عددها از حساب‌های ثبت‌شدهٔ خودت.</p>
+ <div class="hero-balance"><small>جمع بدهی‌ها</small><b data-n="${Store.total()}">${fmt(Store.total())}</b><span>تومان</span></div>
+ <button class="story-action" onclick="tab='list';render()">مشاهدهٔ مشتریان ${uiIcon('arrow')}</button></section>
+ <section class="forecast-panel glass-panel"><div class="panel-heading"><div><small>شش ماه اخیر</small><h3>روند ماندهٔ حساب‌ها</h3></div>${uiIcon('chart')}</div>${trend(ms)}<small>ماندهٔ پایان هر ماه · تومان</small></section>
+ <aside class="dash-rail"><div class="glass-panel today-card"><small>${new Date().toLocaleDateString('fa-IR',{weekday:'long',day:'numeric',month:'long'})}</small><h3>نمای حساب‌ها</h3>
+ <div class="rail-total"><b>${fmt(db.length)}</b><span>مشتری بدهکار</span></div><div class="rail-stats"><button onclick="listBy('late')"><b>${fmt(late.length)}</b><small>عقب‌افتاده</small></button><button onclick="listBy('over')"><b>${fmt(over.length)}</b><small>بالای حد مجاز</small></button></div></div>
+ ${metric('نسیهٔ این ماه',cur.d,'mDebt','wallet','bad')}${metric('دریافتی این ماه',cur.p,'mPay','arrow','ok')}
+ <button class="backup-card" onclick="backup()">${uiIcon('clock')}<span>${bk?'بکاپ امروز را بگیر':'بکاپ کامل حساب‌ها'}<small>ذخیرهٔ فایل JSON</small></span>${uiIcon('arrow')}</button></aside>
+ <div class="dash-details"><section class="box2 glass-panel"><div class="panel-heading"><h3>نسیه و دریافتی ماهانه</h3>${uiIcon('chart')}</div><svg class="sv" viewBox="0 0 290 126" role="img" aria-label="نسیه و دریافتی شش ماه اخیر">${bars}</svg><div class="lg"><span><i style="background:var(--bad)"></i>نسیه</span><span><i style="background:var(--ok)"></i>دریافتی</span></div></section>
+ <section class="box2 glass-panel"><h3>بیشترین بدهکاران</h3>${top.map(x=>`<button class="debt-row" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)}</span><b>${fmt(x.b)}</b><i style="--progress:${x.b/mx*100}%"></i></button>`).join('')||'<p class="empty">هنوز بدهکاری ثبت نشده.</p>'}</section>
+ ${riskBox()}<section class="box2 glass-panel"><h3>عقب‌افتاده‌ها</h3>${late.slice(0,6).map(x=>`<div class="lr" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)}<small>${dueLbl(x.c)[0]}</small></span><b class="warn">${fmt(x.b)}</b></div>`).join('')||'<small>حساب عقب‌افتاده‌ای نیست.</small>'}</section>
+ <section class="box2 glass-panel"><h3>کاسب‌های موقت</h3>${gs.map(x=>`<div class="lr" onclick="profile('${x.c.id}')"><span>${esc(x.c.name)}<small>${dueLbl(x.c)[0]||fmt(age(x.c))+' روز'}</small></span><b>${fmt(x.b)}</b></div>`).join('')||'<small>کاسب موقتی ثبت نشده.</small>'}</section></div></div>`;
+}
 let LL=null;
 function riskSet(){return Store.d.customers.filter(c=>Store.bal(c.id)>0||c.prevLoan||Store.live().some(t=>t.customerId===c.id)).map(c=>({c,b:Store.bal(c.id),r:Ledger.risk(c.id)}))}
 function riskBox(){const all=riskSet(),n=l=>all.filter(x=>x.r.level===l).length,H=n('high'),M=n('mid'),L=n('low'),T=H+M+L||1;
@@ -55,20 +69,24 @@ const RL={high:'پرریسک',mid:'ریسک متوسط',low:'کم‌ریسک'};
 function listBy(k){LL=k;
  if(k.startsWith('risk-')){const lv=k.slice(5),L=riskSet().filter(x=>x.r.level===lv).sort((a,b)=>b.r.score-a.r.score||b.b-a.b);
   return sheet(`<h2>${RL[lv]} <small>(${fmt(L.length)} نفر)</small></h2>${L.slice(0,150).map(x=>`<div class="card" onclick="profile('${x.c.id}')"><div><b>${esc(x.c.name)}</b> <span class="tag rk-${lv}">${fmt(x.r.score)}</span><small>${esc(x.r.reasons.join(' · '))}</small></div><div class="amt ${st(x.c,x.b)}">${fmt(x.b)}<small>تومان</small></div></div>`).join('')||'<p class="empty">موردی نیست</p>'}`)}
-const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),ms=new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
+const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),ms=J.ts([J.today()[0],J.today()[1],1],0);
  if(k==='mDebt'||k==='mPay'){const T=Store.live().filter(t=>t.ts>=ms&&(k==='mDebt'?t.amt>0:t.amt<0)&&t.source!=='import').sort((a,b)=>b.ts-a.ts);
   return sheet(`<h2>${k==='mDebt'?'نسیه‌های این ماه':'دریافتی‌های این ماه'} <small>(${fmt(T.length)} مورد)</small></h2>${T.map(t=>`<div class="card" onclick="profile('${t.cid}')"><div><b>${esc(Store.nm(t.cid))}</b><small>${dt(t.ts)} ${esc(t.note)}</small></div><div class="amt ${t.amt<0?'ok':'bad'}">${fmt(t.amt)}<small>تومان</small></div></div>`).join('')||'<p class="empty">موردی نیست</p>'}<div class="row"><button onclick="closeSheet()">بستن</button></div>`)}
  const m={debtors:['بدهکاران',db.sort((a,b)=>b.b-a.b)],late:['عقب‌افتاده‌ها (سررسید گذشته)',db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays)],over:['بالای حد مجاز',db.filter(x=>x.b>lim(x.c)).sort((a,b)=>b.b-a.b)]},[t,L]=m[k];
  sheet(`<h2>${t} <small>(${fmt(L.length)} نفر)</small></h2>${L.map(x=>`<div class="card" onclick="profile('${x.c.id}')"><div><b>${esc(x.c.name)}</b>${x.c.guest?' <span class="tag gt">مهمان</span>':''}<small>${dueLbl(x.c)[0]||fmt(age(x.c))+' روز از قدیمی‌ترین بدهی'}${x.c.alias?' · «'+esc(x.c.alias)+'»':''}</small></div><div class="amt ${st(x.c,x.b)}">${fmt(x.b)}<small>تومان</small></div></div>`).join('')||'<p class="empty">موردی نیست</p>'}<div class="row"><button onclick="closeSheet()">بستن</button></div>`)}
-function trend(ms){const mx=Math.max(...ms.map(p=>p.net),1),xy=ms.map((p,i)=>[25+i*48,90-Math.max(p.net,0)/mx*70]);
- return`<svg class="sv" viewBox="0 0 290 118"><polyline pathLength="1" fill="none" stroke="var(--ac)" stroke-width="3" points="${xy.map(a=>a.join(',')).join(' ')}"/>${xy.map((a,i)=>`<circle cx="${a[0]}" cy="${a[1]}" r="4" fill="var(--ac)"/><text x="${a[0]}" y="110" text-anchor="middle" font-size="10" fill="var(--mut)">${ms[i].l}</text>`).join('')}</svg>`}
+function trend(ms){
+ const values=ms.map(p=>p.net),lo=Math.min(0,...values),hi=Math.max(1,...values),span=hi-lo||1;
+ const pts=ms.map((p,i)=>[24+i*68,145-(p.net-lo)/span*112]);
+ const path=pts.reduce((d,p,i)=>i?d+' C'+(pts[i-1][0]+34)+','+pts[i-1][1]+' '+(p[0]-34)+','+p[1]+' '+p.join(','):'M'+p.join(','),'');
+ return `<svg class="wave-chart" viewBox="0 0 388 200" role="img" aria-label="روند مانده کل در شش ماه اخیر"><defs><linearGradient id="balance-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e7f7ff" stop-opacity=".32"/><stop offset="1" stop-color="#e7f7ff" stop-opacity="0"/></linearGradient></defs><path class="wave-area" d="${path} L364,164 L24,164Z" fill="url(#balance-fill)"/><path class="wave-line" pathLength="1" d="${path}" fill="none" stroke="currentColor" stroke-width="2.4"/>${pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="currentColor"/><text x="${p[0]}" y="185" text-anchor="middle" fill="currentColor" font-size="11">${esc(ms[i].l)}</text>`).join('')}</svg>`;
+}
 // ---------- مشتریان ----------
 function vList(){return`<div class="srow"><input class="sr" placeholder="جستجوی نام یا اسم مستعار…" value="${esc(qv)}" oninput="qv=this.value;$('#lst').innerHTML=rows()"><button class="pri addb" onclick="editForm(null)">＋ مشتری</button></div><div id="lst">${rows()}</div>`}
 function rows(){const q=norm(qv),cs=Store.d.customers.filter(c=>norm(c.name+' '+(c.alias||'')).includes(q)).map(c=>({c,b:Store.bal(c.id)})).sort((a,b)=>b.b-a.b).slice(0,150);
  if(!cs.length)return'<p class="empty">مشتری‌ای پیدا نشد.</p>';
  return cs.map(({c,b})=>`<div class="card" onclick="profile('${c.id}')"><div><b>${esc(c.name)}</b>${c.guest?' <span class="tag gt">مهمان</span>':''}<small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.phone?esc(c.phone):''}</small></div><div class="amt ${st(c,b)}">${fmt(b)}<small>تومان${b<0?' (بستانکار)':''}</small></div></div>`).join('')}
 function profile(id){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c),[dl,dc]=dueLbl(c),od=a.oldestUnpaidDebt;
- sheet(`<div class="ph"><div class="av">${esc(c.name[0]||'؟')}</div><div><h2>${esc(c.name)}</h2><small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.guest?'کاسب موقت · ':''}${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'بدون شماره'}</small></div></div>
+ sheet(`<div class="ph customer-header"><div class="av">${esc(c.name[0]||'؟')}</div><div><h2>${esc(c.name)}</h2><small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.guest?'کاسب موقت · ':''}${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'بدون شماره'}</small></div></div>
  <div class="amt big ${st(c,b)}">${fmt(b)} <small>تومان${b<0?' (بستانکار)':''}</small></div>
  <div class="kpis"><div><small>کل نسیه</small><b>${fmt(sumTx(id,t=>t.amt>0)+(c.prevLoan||0))}</b></div><div><small>کل پرداخت</small><b>${fmt(sumTx(id,t=>t.amt<0)+(c.prevPay||0))}</b></div>
  <div><small>روز از آخرین پرداخت</small><b>${a.daysSinceLastPayment==null?'—':fmt(a.daysSinceLastPayment)}</b></div><div><small>روز از قدیمی‌ترین بدهی</small><b>${a.daysSinceOldestDebt==null?'—':fmt(a.daysSinceOldestDebt)}</b></div></div>
@@ -86,7 +104,7 @@ function manual(id,sg){const a=Number(norm($('#ma').value));if(!Number.isSafeInt
  Store.addTransaction({customerId:id,type:sg>0?'credit':'payment',amount:a,date:now,dueDate:sg>0?now+(dd||dys(find(id)))*DAY:null,description:$('#mn').value,source:'manual'});alertLimit(find(id),sg);profile(id)}
 function alertLimit(c,sg){const b=Store.bal(c.id);if(sg>0&&b>lim(c))tg(`⚠️ بدهی ${c.name} به ${fmt(b)} تومان رسید (حد: ${fmt(lim(c))})`)}
 function editForm(id,pre){const c=id?find(id):(pre||{});
- sheet(`<h2>${id?'ویرایش پروفایل':'مشتری جدید'}</h2><label>نام</label><input id="en" value="${esc(c.name||'')}"><label>اسم مستعار (برای کسانی که نمی‌شناسی، مثلاً «آقای عینکی»)</label><input id="ea" value="${esc(c.alias||'')}">
+ sheet(`${id?`<div class="customer-header"><h2>${esc(c.name)}</h2><small>ویرایش پروفایل مشتری</small></div>`:'<h2>مشتری جدید</h2>'}<label>نام</label><input id="en" value="${esc(c.name||'')}"><label>اسم مستعار (برای کسانی که نمی‌شناسی، مثلاً «آقای عینکی»)</label><input id="ea" value="${esc(c.alias||'')}">
  <label>شماره تماس</label><input id="ep" type="tel" value="${esc(c.phone||'')}"><label>یادداشت / آدرس</label><textarea id="eo" rows="2">${esc(c.note||'')}</textarea>
  <label>حد بدهی (تومان) — خالی = پیش‌فرض</label><input id="el" type="number" value="${c.limit||''}"><label>مهلت پرداخت (روز) — خالی = پیش‌فرض</label><input id="ed" type="number" value="${c.days||''}">
  <label class="opt"><input type="checkbox" id="eg" ${c.guest?'checked':''}> کاسب موقت (مهمان) — در ستون ویژه‌ی داشبورد دیده می‌شود</label>
@@ -234,12 +252,13 @@ function listen(){if(on)return;if(!SR)return toast('از میکروفون کیب
  rec=r;voiceDraft=[];let heard=false,failed=false,timer=null,previous=$('#cmd').value;
  r.lang='fa-IR';r.continuous=true;r.interimResults=true;r.maxAlternatives=5;micState(true);
  r.onstart=()=>{if(rec!==r)return;toast('صحبت کن؛ برای پایان، دوباره میکروفون را بزن');timer=setTimeout(()=>{if(rec===r)r.stop()},30000)};
+ r.onfallback=()=>{if(rec===r)clearTimeout(timer)};
  r.onend=()=>{if(rec!==r)return;clearTimeout(timer);rec=null;micState(false);
   if(voiceDraft.length){$('#cmd').value=voiceDraft[0].text;voiceText=voiceDraft[0].text;reviewVoice()}
   else {if(!heard)$('#cmd').value=previous;if(!failed)toast(heard?'متن نهایی دریافت نشد؛ متن را اصلاح کن و ثبت را بزن':'صدایی شنیده نشد؛ دوباره امتحان کن')}};
  r.onerror=e=>{if(rec!==r)return;failed=true;clearTimeout(timer);
   if(e.error==='offline-unavailable')return toast('تشخیص گفتار آفلاین روی این گوشی آماده نیست؛ به اندروید ۱۲ به بالا و مدل فارسی نیاز دارد. متن را دستی یا با کیبورد وارد کن.');
-  const messages={network:'سرویس تشخیص گفتار در دسترس نیست؛ اتصال اینترنت را بررسی کن یا از میکروفون کیبورد استفاده کن.','service-not-allowed':'سرویس گفتار در این مرورگر فعال نیست؛ از میکروفون کیبورد استفاده کن.','not-allowed':'دسترسی میکروفون را در تنظیمات گوشی و مرورگر فعال کن.','audio-capture':'میکروفون در دسترس نیست؛ برنامه‌های ضبط دیگر را ببند.','no-speech':'صدایی شنیده نشد؛ نزدیک‌تر به میکروفون صحبت کن.','language-not-supported':'این مرورگر تشخیص گفتار فارسی را پشتیبانی نمی‌کند.'};
+  const messages={network:'سرویس تشخیص گفتار در دسترس نیست؛ اتصال اینترنت را بررسی کن یا از میکروفون کیبورد استفاده کن.','service-not-allowed':'سرویس گفتار در این مرورگر فعال نیست؛ از میکروفون کیبورد استفاده کن.','not-allowed':'دسترسی میکروفون را در تنظیمات گوشی و مرورگر فعال کن.','audio-capture':'میکروفون در دسترس نیست؛ برنامه‌های ضبط دیگر را ببند.','no-speech':'صدایی شنیده نشد؛ نزدیک‌تر به میکروفون صحبت کن.','language-not-supported':window.NasieAndroid?'مدل گفتار فارسی روی گوشی آماده نیست؛ از تشخیص گفتار سیستم یا کیبورد استفاده کن.':'سرویس صوتی فعلی فارسی را پشتیبانی نمی‌کند؛ زبان گفتار کیبورد را فارسی تنظیم کن.'};
   if(e.error!=='aborted')toast(messages[e.error]||'تشخیص صدا متوقف شد؛ دوباره امتحان کن.')};
  r.onresult=e=>{if(rec!==r)return;heard=true;voiceDraft=speechChoices(e.results);
   $('#cmd').value=Array.from(e.results,x=>x[0].transcript).join(' ').trim();
