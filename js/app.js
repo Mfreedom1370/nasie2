@@ -1,4 +1,4 @@
-// nasie-release:17
+// nasie-release:18
 Store.load();
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
@@ -19,7 +19,15 @@ function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeou
 function sheet(h){hideCmdSuggestions();if(cmd)cmd.open=false;$('#sheet').innerHTML=`<div class="sh"><div class="xrow"><button class="x" onclick="dismiss()" aria-label="بستن">✕</button></div><div class="box">${h}</div></div>`;$('#sheet').hidden=false}
 function dismiss(){if(cmd&&cmd.open)cancelCmd();else closeSheet()}
 function closeSheet(){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;render()}
-function anim(){document.querySelectorAll('[data-n]').forEach(el=>{const t=+el.dataset.n,s=performance.now();el.classList.toggle('lg',t>=1e7);(function f(n){const p=Math.min(1,(n-s)/800);el.textContent=fmt(t*(1-(1-p)**3));if(p<1)requestAnimationFrame(f)})(s)});
+let counterFrame=null,counterGeneration=0;
+function anim(){if(counterFrame!==null)cancelAnimationFrame(counterFrame);counterFrame=null;const generation=++counterGeneration;
+ const counters=Array.from(document.querySelectorAll('[data-n]'),el=>({el,value:Number(el.dataset.n)||0})),start=performance.now();
+ const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+ const frame=now=>{if(generation!==counterGeneration)return;counterFrame=null;
+  const p=reduced||document.visibilityState==='hidden'?1:Math.max(0,Math.min(1,(now-start)/800));
+  for(const {el,value} of counters){if(el.isConnected===false)continue;el.classList.toggle('lg',value>=1e7);el.textContent=fmt(value*(1-(1-p)**3));}
+  if(p<1&&counters.some(x=>x.el.isConnected!==false))counterFrame=requestAnimationFrame(frame);
+ };frame(start);
  document.querySelectorAll('main>*').forEach((el,i)=>el.style.setProperty('--i',Math.min(i,12)));document.querySelectorAll('main .kpis').forEach(k=>[...k.children].forEach((el,j)=>el.style.setProperty('--j',j)))}
 function render(){document.body.dataset.tab=tab;
  const storageMessage=Store.blocked||(!Store.writeAllowed?(Store.guardMessage||'ثبت فعلاً متوقف است'):Store.backupWarning);
@@ -117,11 +125,34 @@ function saveC(id){const n=$('#en').value.trim(),a=$('#ea').value.trim();if(!n&&
 function delC(id){if(!confirm('مشتری با تمام ثبت‌هایش به سطل زباله برود؟'))return;Store.delC(id);closeSheet()}
 function delTx(tid,id){Store.delTx(tid);toast('به سطل زباله رفت');profile(id)}
 // ---------- تغییرات روزانه ----------
-function vLog(){const L=Store.d.log.filter(x=>x.ts>=ld&&x.ts<ld+864e5).sort((a,b)=>b.ts-a.ts),s=f=>L.filter(f).reduce((a,x)=>a+Math.abs(x.a),0);
- return`<div class="row"><button onclick="ld-=864e5;render()">◀ روز قبل</button><button onclick="ld=new Date().setHours(0,0,0,0);render()">امروز</button><button onclick="ld+=864e5;render()">روز بعد ▶</button></div>
+let logMonth=null,logPage=0,logFrame=null;
+const LOG_PAGE_SIZE=100,JM=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+function localDay(ts){const d=new Date(ts);return d.setHours(0,0,0,0)}
+function followingDay(ts){const d=new Date(ts);d.setDate(d.getDate()+1);return d.setHours(0,0,0,0)}
+function logJalali(ts=ld){const d=new Date(ts);return J.g2j(d.getFullYear(),d.getMonth()+1,d.getDate())}
+function queueLogRender(){if(logFrame!==null)return;logFrame=requestAnimationFrame(()=>{logFrame=null;if(tab==='log')$('#view').innerHTML=vLog()})}
+function selectLogDay(ts){const value=localDay(ts);if(!Number.isFinite(value))return toast('تاریخ معتبر نیست');
+ const y=logJalali(value)[0];if(y<1200||y>1600)return toast('سال باید بین ۱۲۰۰ و ۱۶۰۰ باشد');
+ ld=value;logMonth=null;logPage=0;queueLogRender()}
+function shiftLogDay(step){const d=new Date(ld);d.setDate(d.getDate()+step);selectLogDay(d.getTime())}
+function changeLogMonth(year,month){const num=s=>Number(String(s).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+ const y=num(year),m=num(month);if(!Number.isInteger(y)||y<1200||y>1600||!Number.isInteger(m)||m<1||m>12){toast('سال یا ماه معتبر نیست');queueLogRender();return}
+ logMonth=[y,m];queueLogRender()}
+function shiftLogMonth(step){let [y,m]=logMonth||logJalali().slice(0,2);m+=step;if(m<1){m=12;y--}if(m>12){m=1;y++}changeLogMonth(y,m)}
+function pageLog(step){logPage=Math.max(0,logPage+step);queueLogRender()}
+function logCalendar(){const [y,m]=logMonth||logJalali().slice(0,2),start=J.ts([y,m,1],0),end=J.ts(m===12?[y+1,1,1]:[y,m+1,1],0);
+ const days=Math.round((end-start)/864e5),offset=(new Date(start).getDay()+1)%7,today=localDay(Date.now());
+ const cells=Array.from({length:offset},()=>'<span aria-hidden="true"></span>');
+ for(let day=1;day<=days;day++){const ts=J.ts([y,m,day],0);cells.push(`<button type="button" class="${ts===ld?'selected ':''}${ts===today?'today':''}" aria-label="${J.fa([y,m,day])}" aria-pressed="${ts===ld}" onclick="selectLogDay(${ts})">${fmt(day)}</button>`)}
+ return`<section class="log-calendar box2" aria-label="تقویم شمسی"><div class="calendar-heading"><b>تقویم شمسی</b><small>برای دیدن تغییرات، روز را انتخاب کن</small></div>
+ <div class="calendar-controls"><button onclick="shiftLogMonth(-1)" aria-label="ماه قبل">‹</button><select id="log-calendar-month" aria-label="ماه" onchange="changeLogMonth($('#log-calendar-year').value,this.value)">${JM.map((name,i)=>`<option value="${i+1}" ${i+1===m?'selected':''}>${name}</option>`).join('')}</select><input id="log-calendar-year" inputmode="numeric" aria-label="سال شمسی" value="${y}" onchange="changeLogMonth(this.value,$('#log-calendar-month').value)"><button onclick="shiftLogMonth(1)" aria-label="ماه بعد">›</button></div>
+ <div class="calendar-grid calendar-weekdays">${['ش','ی','د','س','چ','پ','ج'].map(x=>`<span>${x}</span>`).join('')}</div><div class="calendar-grid">${cells.join('')}</div></section>`}
+function vLog(){const end=followingDay(ld),L=Store.d.log.filter(x=>x.ts>=ld&&x.ts<end).sort((a,b)=>b.ts-a.ts),s=f=>L.filter(f).reduce((a,x)=>a+Math.abs(x.a),0);
+ const pages=Math.max(1,Math.ceil(L.length/LOG_PAGE_SIZE));logPage=Math.min(logPage,pages-1);const rows=L.slice(logPage*LOG_PAGE_SIZE,(logPage+1)*LOG_PAGE_SIZE);
+ return`${logCalendar()}<div class="row log-day-controls"><button onclick="shiftLogDay(-1)">◀ روز قبل</button><button onclick="selectLogDay(Date.now())">امروز</button><button onclick="shiftLogDay(1)">روز بعد ▶</button></div>
  <h3 class="dayh">${new Date(ld).toLocaleDateString('fa-IR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</h3>
- <div class="kpis"><div><small>تعداد تغییرات</small><b data-n="${L.length}"></b></div><div class="k-bad"><small>نسیه‌ی روز</small><b data-n="${s(x=>x.t==='tx'&&x.a>0)}"></b></div><div class="k-ok"><small>دریافتی روز</small><b data-n="${s(x=>x.t==='tx'&&x.a<0)}"></b></div></div>
- <div class="box2">${L.map(e=>`<div class="lgr"><time>${tm(e.ts)}</time><span>${esc(logText(e))}</span></div>`).join('')||'<small>در این روز تغییری ثبت نشده</small>'}</div>`}
+ <div class="kpis"><div><small>تعداد تغییرات</small><b>${fmt(L.length)}</b></div><div class="k-bad"><small>نسیه‌ی روز</small><b>${fmt(s(x=>x.t==='tx'&&x.a>0))}</b></div><div class="k-ok"><small>دریافتی روز</small><b>${fmt(s(x=>x.t==='tx'&&x.a<0))}</b></div></div>
+ <div class="box2 log-entries">${rows.map(e=>`<div class="lgr"><time>${tm(e.ts)}</time><span>${esc(logText(e))}</span></div>`).join('')||'<small>در این روز تغییری ثبت نشده</small>'}</div>${pages>1?`<div class="row log-pagination"><button onclick="pageLog(-1)" ${logPage===0?'disabled':''}>قبلی</button><small>صفحهٔ ${fmt(logPage+1)} از ${fmt(pages)}</small><button onclick="pageLog(1)" ${logPage===pages-1?'disabled':''}>بعدی</button></div>`:''}`}
 // ---------- سطل زباله ----------
 function trashView(){const T=[...Store.d.trash].sort((a,b)=>b.ts-a.ts);
  sheet(`<h2>🗑 سطل زباله</h2><small>هر چیزی که حذف کنی اول اینجا می‌آید و قابل بازیابی است.</small>

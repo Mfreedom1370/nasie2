@@ -1,7 +1,7 @@
 // Full app smoke test with a fake DOM and isolated storage. No external service calls.
 const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 const read=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');
-const nodes=new Map(),listeners={},downloads=[],timers=[];
+const nodes=new Map(),listeners={},downloads=[],timers=[],frames=new Map();let frameSequence=0;
 const encode=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function node(){let text='',html='';return {value:'',checked:false,hidden:false,dataset:{},style:{setProperty(){}},classList:{toggle(){},remove(){},add(){}},
  get textContent(){return text},set textContent(v){text=String(v);html=encode(v)},get innerHTML(){return html},set innerHTML(v){html=v},
@@ -13,12 +13,47 @@ const window={addEventListener:(n,fn)=>listeners[n]=fn};
 const context=vm.createContext({document,window,localStorage:storage,Blob,URL,FormData,performance:{now:()=>0},
  navigator:{locks:{request:async(n,o,fn)=>fn({name:n})}},
  addEventListener:(n,fn)=>listeners[n]=fn,setInterval:fn=>1,setTimeout:fn=>{timers.push(fn);return timers.length},clearTimeout(){},
- requestAnimationFrame(){},confirm:()=>false,fetch:()=>{throw new Error('Unexpected external network call')}});
+ requestAnimationFrame(fn){frames.set(++frameSequence,fn);return frameSequence},cancelAnimationFrame(id){frames.delete(id)},confirm:()=>false,fetch:()=>{throw new Error('Unexpected external network call')}});
 const files=['js/store.js','js/safety.js','js/jdate.js','js/parser.js','js/ledger.js','js/telegram.js','js/app.js'];
 vm.runInContext(files.map(read).join('\n'),context);
 const execute=s=>vm.runInContext(s,context);
 assert.ok(query('#view').innerHTML.includes('جمع بدهی‌ها'));
 assert.equal(execute('Store.writeAllowed'),true);
+// Rapid redraws keep one animation frame, including callbacks already queued by the browser.
+const counter=node();counter.dataset.n='100';counter.isConnected=true;
+document.querySelectorAll=s=>s==='[data-n]'?[counter]:[];
+execute('anim()');const staleFrame=[...frames.values()][0];
+for(let i=0;i<300;i++)execute('anim()');
+assert.equal(frames.size,1,'redraws must cancel prior counter animations');
+staleFrame(400);assert.equal(frames.size,1,'stale callback must not restart animation');
+const finish=[...frames.values()][0];frames.clear();finish(1000);assert.equal(frames.size,0);
+assert.equal(counter.textContent,'۱۰۰');document.querySelectorAll=()=>[];
+// Calendar month boundaries, leap Esfand, invalid input and bounded daily log DOM.
+execute("tab='log';selectLogDay(J.ts([1403,12,30],0))");
+const flushFrames=()=>{const batch=[...frames.values()];frames.clear();for(const fn of batch)fn(1000)};
+flushFrames();assert.ok(query('#view').innerHTML.includes('۱۴۰۳/۱۲/۳۰'));
+execute('shiftLogDay(1)');flushFrames();assert.equal(execute('J.str(logJalali())'),'1404/01/01');
+execute("changeLogMonth('۱۴۰۴',12)");flushFrames();
+assert.equal((execute('logCalendar()').match(/onclick="selectLogDay/g)||[]).length,29);
+execute('changeLogMonth(1403,12)');flushFrames();
+assert.equal((execute('logCalendar()').match(/onclick="selectLogDay/g)||[]).length,30);
+const validMonth=execute('JSON.stringify(logMonth)');execute("changeLogMonth('bad',99)");flushFrames();assert.equal(execute('JSON.stringify(logMonth)'),validMonth);
+const originalLog=execute('Store.d.log');
+if(process.env.TZ==='America/New_York'){
+ assert.equal(execute('followingDay(new Date(2025,2,9).getTime())-localDay(new Date(2025,2,9).getTime())'),23*3600000);
+ assert.equal(execute('followingDay(new Date(2025,10,2).getTime())-localDay(new Date(2025,10,2).getTime())'),25*3600000);
+ execute("ld=localDay(new Date(2025,10,2));Store.d.log=[{ts:new Date(2025,10,2,23,30).getTime(),t:'tx',a:100,n:'late'},{ts:new Date(2025,10,3).getTime(),t:'tx',a:200,n:'next'}]");
+ assert.equal((execute('vLog()').match(/class="lgr"/g)||[]).length,1,'25-hour day includes late entry and excludes next midnight');
+}
+execute("Store.d.log=Array.from({length:250},(_,i)=>({ts:ld+i*1000,t:'tx',a:100,n:'نمونه'}));logPage=0");
+let logMarkup=execute('vLog()');assert.equal((logMarkup.match(/class="lgr"/g)||[]).length,100);assert.ok(logMarkup.includes('۲۵۰'));
+execute('pageLog(2)');flushFrames();assert.equal((query('#view').innerHTML.match(/class="lgr"/g)||[]).length,50);
+context.originalLog=originalLog;execute('Store.d.log=originalLog');
+const persisted=storage.getItem('nasie'),startDay=execute('ld');
+for(let i=0;i<1000;i++)execute(`shiftLogDay(${i%2?-1:1})`);
+assert.equal(frames.size,1,'rapid day navigation coalesces into one redraw');flushFrames();
+assert.equal(execute('ld'),startDay);assert.equal(storage.getItem('nasie'),persisted,'date navigation cannot change saved accounts');
+execute("tab='dash';render()");
 execute("const customer=Store.addC('آزمایشی');");
 query('#cmd').value='آزما';execute('updateCmdSuggestions()');
 assert.equal(query('#cmd-suggestions').hidden,false);
