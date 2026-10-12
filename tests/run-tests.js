@@ -3,7 +3,7 @@ const fs=require('fs'),path=require('path'),R=p=>fs.readFileSync(path.join(__dir
 const body=`
 let pass=0,fail=0;const ok=(c,m)=>{c?pass++:(fail++,console.log('  ✗',m))};const eq=(a,b,m)=>ok(a===b,m+' (گرفت '+a+' ، انتظار '+b+')');
 const D=(y,m,d)=>new Date(y,m-1,d,12).getTime(),mem={};
-const reset=()=>{for(const k in mem)delete mem[k];Store.d={customers:[],tx:[],trash:[],log:[],voiceLog:[],schema:2,set:{...DEF},alerts:{}}};
+const reset=()=>{for(const k in mem)delete mem[k];Store.d={customers:[],tx:[],trash:[],log:[],voiceLog:[],schema:2,set:{...DEF},alerts:{}};Store.load()};
 // ---- ۴) Migration داده‌ی قدیمی ----
 reset();const legacy={customers:[{id:'a',name:'علی',days:10},{id:'b',name:'رضا'}],tx:[{id:'t1',cid:'a',amt:5000000,note:'خرید',ts:D(2026,9,1)},{id:'t2',cid:'a',amt:-500000,note:'',ts:D(2026,9,10)},{id:'oldt9',cid:'b',amt:70000,note:'مانده‌ی انتقالی از برنامه‌ی قبلی',ts:D(2026,8,1)}],
  trash:[{id:'x',k:'tx',data:{id:'t3',cid:'a',amt:1000,note:'',ts:D(2026,9,2)},ts:1,label:'z'}],log:[{ts:1,t:'tx',n:'علی',a:5}],set:{token:'T',days:30},alerts:{}};
@@ -66,4 +66,4 @@ console.log(fail?('❌ '+fail+' تست ناموفق، '+pass+' موفق'):('✅ 
 `;
 const mem={};const ls={getItem:k=>k in mem?mem[k]:null,setItem:(k,v)=>{mem[k]=v}};
 // mem داخل تست هم دیده می‌شود
-new Function('localStorage','mem','document',R('js/store.js')+R('js/parser.js')+R('js/ledger.js')+body.replace('const D=(y,m,d)=>new Date(y,m-1,d,12).getTime(),mem={};','const D=(y,m,d)=>new Date(y,m-1,d,12).getTime();'))(ls,mem,{});
+new Function('localStorage','mem','document',R('js/store.js')+R('js/safety.js')+R('js/parser.js')+R('js/ledger.js')+body.replace('const D=(y,m,d)=>new Date(y,m-1,d,12).getTime(),mem={};','const D=(y,m,d)=>new Date(y,m-1,d,12).getTime();'))(ls,mem,{});

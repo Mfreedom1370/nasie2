@@ -1,0 +1,29 @@
+plugins { id 'com.android.application' }
+def signingFile = System.getenv('NASIE_KEYSTORE')
+android {
+ namespace 'ir.nasie.offline'
+ compileSdk 35
+ defaultConfig {
+  applicationId 'ir.nasie.offline'
+  minSdk 26
+  targetSdk 35
+  versionCode Integer.parseInt(System.getenv('NASIE_VERSION_CODE') ?: '1')
+  versionName '1.0.' + (System.getenv('NASIE_VERSION_CODE') ?: '1')
+ }
+ signingConfigs {
+  if (signingFile) {
+   release {
+    storeFile file(signingFile)
+    storePassword System.getenv('NASIE_STORE_PASSWORD')
+    keyAlias System.getenv('NASIE_KEY_ALIAS')
+    keyPassword System.getenv('NASIE_KEY_PASSWORD')
+   }
+  }
+ }
+ buildTypes {
+  debug { applicationIdSuffix '.test'; versionNameSuffix '-test' }
+  release { if (signingFile) signingConfig signingConfigs.release; minifyEnabled false }
+ }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { implementation 'androidx.webkit:webkit:1.12.1' }

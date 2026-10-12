@@ -1,5 +1,9 @@
+// nasie-release:14
 Store.load();
-const $=s=>document.querySelector(s),esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML};
+function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
+addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
+
+const $=s=>document.querySelector(s),esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;')};
 const fmt=n=>Math.abs(Math.round(n)).toLocaleString('fa-IR'),dt=ts=>new Date(ts).toLocaleDateString('fa-IR'),tm=ts=>new Date(ts).toLocaleTimeString('fa-IR',{hour:'2-digit',minute:'2-digit'});
 const lim=c=>c.limit||Store.d.set.limit,dys=c=>c.days||Store.d.set.days,find=id=>Store.d.customers.find(x=>x.id===id);
 let tab='dash',pending=null,qv='',ld=new Date().setHours(0,0,0,0);
@@ -17,12 +21,16 @@ function dismiss(){if(cmd&&cmd.open)cancelCmd();else closeSheet()}
 function closeSheet(){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;render()}
 function anim(){document.querySelectorAll('[data-n]').forEach(el=>{const t=+el.dataset.n,s=performance.now();el.classList.toggle('lg',t>=1e7);(function f(n){const p=Math.min(1,(n-s)/800);el.textContent=fmt(t*(1-(1-p)**3));if(p<1)requestAnimationFrame(f)})(s)});
  document.querySelectorAll('main>*').forEach((el,i)=>el.style.setProperty('--i',Math.min(i,12)));document.querySelectorAll('main .kpis').forEach(k=>[...k.children].forEach((el,j)=>el.style.setProperty('--j',j)))}
-function render(){document.body.dataset.tab=tab;$('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b data-n="${Store.total()}"></b><span class="tl">تومان</span>`;
+function render(){document.body.dataset.tab=tab;
+ const storageMessage=Store.blocked||(!Store.writeAllowed?(Store.guardMessage||'ثبت فعلاً متوقف است'):Store.backupWarning);
+ $('#storage-status').innerHTML=storageMessage?`<div class="bk">${esc(storageMessage)} <button onclick="tab='set';render()">بکاپ و بازیابی</button>${!Store.writeAllowed&&Store.acquireWriter?'<button onclick="Store.acquireWriter()">فعال‌کردن ثبت</button>':''}</div>`:'';
+$('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b data-n="${Store.total()}"></b><span class="tl">تومان</span>`;
  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
  $('#view').innerHTML=({dash:vDash,list:vList,log:vLog,ai:vAI,set:vSet})[tab]();document.body.classList.toggle('ai',tab==='ai');anim()}
 // ---------- داشبورد ----------
-function months(){const out=[],n=new Date();
- for(let i=5;i>=0;i--){const s=new Date(n.getFullYear(),n.getMonth()-i,1).getTime(),e=new Date(n.getFullYear(),n.getMonth()-i+1,1).getTime(),t=Store.live().filter(x=>x.ts>=s&&x.ts<e&&x.source!=='import');
+function months(){const out=[],today=J.today();
+ for(let i=5;i>=0;i--){let y=today[0],m=today[1]-i;while(m<1){m+=12;y--}
+  const s=J.ts([y,m,1],0),e=J.ts(m===12?[y+1,1,1]:[y,m+1,1],0),t=Store.live().filter(x=>x.ts>=s&&x.ts<e&&x.source!=='import');
   out.push({l:new Date(s).toLocaleDateString('fa-IR',{month:'short'}),d:t.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0),p:-t.filter(x=>x.amt<0).reduce((a,x)=>a+x.amt,0),net:Store.live().filter(x=>x.ts<e).reduce((a,x)=>a+x.amt,0)})}return out}
 function vDash(){const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),over=db.filter(x=>x.b>lim(x.c)),late=db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays),
  gs=db.filter(x=>x.c.guest).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays||age(b.c)-age(a.c)),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1,now=new Date(),
@@ -73,7 +81,8 @@ function profile(id){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c)
  <div class="row"><button class="pri" onclick="manual('${id}',1)">+ نسیه</button><button onclick="manual('${id}',-1)">− پرداخت</button></div>
  <label>تاریخچه</label>${Store.live().filter(t=>t.customerId===id).sort((a,b)=>b.date-a.date).map(t=>`<div class="tx"><span>${dt(t.date)} ${TYPE[t.type]} <small>${SRC[t.source]||''}${t.source==='voice'&&t.meta&&t.meta.confirmed?' · تایید شد ✔':''} ${esc(t.description)}</small></span><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button onclick="delTx('${t.id}','${id}')">🗑</button></div>`).join('')||'<small>هنوز ثبتی نیست</small>'}
  <div class="row">${LL?'<button onclick="listBy(LL)">◀ بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button><button onclick="closeSheet()">بستن</button></div>`)}
-function manual(id,sg){const a=+$('#ma').value;if(!a)return toast('مبلغ را وارد کن');const dd=+$('#md').value,now=Date.now();
+function manual(id,sg){const a=Number(norm($('#ma').value));if(!Number.isSafeInteger(a)||a<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن');
+ const due=$('#md').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');const now=Date.now();
  Store.addTransaction({customerId:id,type:sg>0?'credit':'payment',amount:a,date:now,dueDate:sg>0?now+(dd||dys(find(id)))*DAY:null,description:$('#mn').value,source:'manual'});alertLimit(find(id),sg);profile(id)}
 function alertLimit(c,sg){const b=Store.bal(c.id);if(sg>0&&b>lim(c))tg(`⚠️ بدهی ${c.name} به ${fmt(b)} تومان رسید (حد: ${fmt(lim(c))})`)}
 function editForm(id,pre){const c=id?find(id):(pre||{});
@@ -107,23 +116,36 @@ function vSet(){const s=Store.d.set;
  <label>حد بدهی پیش‌فرض (تومان)</label><input type="number" value="${s.limit}" onchange="setv('limit',+this.value)"><label>مهلت پیش‌فرض پرداخت (روز)</label><input type="number" value="${s.days}" onchange="setv('days',+this.value)">
  <label>دستیار هوشمند — سرویس</label><select class="sr" onchange="aiPreset(this.value)">${[['openai','OpenAI (ChatGPT) — پولی'],['gemini','Google Gemini — دارای سطح رایگان'],['openrouter','OpenRouter — مدل‌های رایگان :free'],['custom','سفارشی']].map(([v,l])=>`<option value="${v}" ${(AIP[v]||[])[0]===s.aiUrl?'selected':''}>${l}</option>`).join('')}</select><label>آدرس سرویس (سازگار با OpenAI)</label><input value="${esc(s.aiUrl)}" onchange="setv('aiUrl',this.value)" dir="ltr"><label>کلید API</label><input type="password" value="${esc(s.aiKey)}" onchange="setv('aiKey',this.value)" dir="ltr"><label>نام مدل</label><input value="${esc(s.aiModel)}" onchange="setv('aiModel',this.value)" dir="ltr">
  <label class="opt"><input type="checkbox" ${s.aiAnon?'checked':''} onchange="setv('aiAnon',this.checked)"> نام مشتری‌ها به کد تبدیل شود (پیشنهادی؛ سرویس‌های رایگان ممکن است داده را برای بهبود محصول استفاده کنند)</label><small>خلاصه‌ی حساب‌ها برای سرویس انتخابی ارسال می‌شود.</small><label>ساعت یادآور بکاپ روزانه (۰ تا ۲۳)</label><input type="number" min="0" max="23" value="${s.bkHour}" onchange="setv('bkHour',+this.value)">
- <div class="row"><button class="pri" onclick="backup()">📦 بکاپ اکسل الان</button><button onclick="tg('✅ پیام آزمایشی دفتر نسیه').then(o=>toast(o?'ارسال شد':'ارسال نشد؛ توکن/Chat ID را بررسی کن'))">تست تلگرام</button></div>
- <small>آخرین بکاپ اکسل: ${s.lastBk||'—'}. فایل در گوشی ذخیره می‌شود و اگر تلگرام وصل باشد همان‌جا هم فرستاده می‌شود.</small>
- ${Store.hasInternalBackup()?'<div class="row"><button onclick="if(confirm(\'داده‌ها به قبل از ارتقای ساختار برگردد؟ تغییرات بعد از ارتقا از بین می‌رود.\')&&Store.restoreInternalBackup())location.reload()">↩︎ بازگردانی بکاپ داخلی قبل از ارتقا</button></div>':''}<div class="row"><button onclick="Store.exportJson()">خروجی JSON</button><button onclick="$('#imp').click()">بازیابی JSON</button><button onclick="trashView()">🗑 سطل زباله</button></div>
- <input type="file" id="imp" accept=".json" hidden onchange="this.files[0].text().then(t=>{Store.importJson(t);render();toast('بازیابی شد')})">`}
+ <div class="row"><button class="pri" onclick="backup()">📦 بکاپ کامل JSON</button><button onclick="tg('✅ پیام آزمایشی دفتر نسیه').then(o=>toast(o?'ارسال شد':'ارسال نشد؛ توکن/Chat ID را بررسی کن'))">تست تلگرام</button></div>
+ <small>آخرین درخواست دانلود بکاپ: ${s.lastBk||'—'}. بعد از دانلود، وجود فایل را در گوشی بررسی کن. JSON برای بازیابی کامل است؛ اکسل گزارش حساب‌هاست.</small>
+ <label>حفاظت از اطلاعات</label><small>نسخه محلی روزانه تا ۳ روز دارای نسخه نگه داشته می‌شود. این نسخه‌ها با پاک‌کردن داده‌های سایت از بین می‌روند؛ JSON را بیرون از گوشی هم نگه دار.</small>
+ <div class="row"><button onclick="persistStorage()">درخواست ذخیره‌سازی ماندگار</button>${Store.recoveryText('previous')?'<button onclick="recoverLocal(\'previous\')">بازیابی آخرین وضعیت سالم</button>':''}${Store.recoveryText('before')?'<button onclick="recoverLocal(\'before\')">برگشت به قبل از بازیابی</button>':''}</div>
+ ${Store.localBackups().map((b,i)=>`<div class="row"><span>${dt(b.ts)} ${tm(b.ts)}</span><button onclick="downloadLocal(${i})">دانلود JSON</button><button onclick="recoverLocal('${i}')">بازیابی</button></div>`).join('')}
+
+ ${Store.hasInternalBackup()?'<div class="row"><button onclick="if(confirm(\'داده‌ها به قبل از ارتقای ساختار برگردد؟ تغییرات بعد از ارتقا از بین می‌رود.\')&&Store.restoreInternalBackup())location.reload()">↩︎ بازگردانی بکاپ داخلی قبل از ارتقا</button></div>':''}<div class="row"><button onclick="Store.exportJson()">خروجی JSON</button><button onclick="$('#imp').click()">بازیابی JSON</button><button onclick="excelBackup()">گزارش اکسل</button><button onclick="trashView()">🗑 سطل زباله</button></div>
+ <input type="file" id="imp" accept=".json" hidden onchange="importBackup(this)">`}
+async function importBackup(input){const file=input.files?.[0];input.value='';if(!file)return;
+ try{const data=Store.prepare(await file.text());if(!confirm(`بازیابی ${data.customers.length} مشتری و ${data.tx.length} تراکنش، حساب‌های فعلی را جایگزین می‌کند. نسخه برگشت نیز نگه داشته می‌شود. ادامه؟`))return;
+ Store.replacePrepared(data);render();toast('بازیابی و ذخیره کامل شد')}catch(e){toast(e.storeError?e.message:'فایل قابل خواندن نیست؛ بازیابی انجام نشد')}}
+function recoverLocal(kind){try{const raw=Store.recoveryText(kind);if(!raw)return toast('نسخه موجود نیست');const data=Store.prepare(raw);
+ if(!confirm(`این نسخه شامل ${data.customers.length} مشتری و ${data.tx.length} تراکنش است. جایگزین حساب‌های فعلی شود؟`))return;
+ Store.replacePrepared(data);render();toast('بازیابی کامل شد')}catch(e){toast(e.message)}}
+function downloadLocal(index){const b=Store.localBackups()[index];if(b)Store.download(b.raw,'nasie-local-'+b.ts+'.json')}
+async function persistStorage(){const ok=await Store.requestPersistence();toast(ok?'ذخیره‌سازی ماندگار فعال شد؛ بکاپ خارج از گوشی همچنان لازم است':'مرورگر دسترسی ماندگار نداد؛ بکاپ خارج از گوشی نگه دار')}
 function setv(k,v){Store.d.set[k]=v;Store.save()}
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((ok,no)=>{const s=document.createElement('script');s.src='js/vendor/xlsx.full.min.js';s.onload=ok;s.onerror=()=>{s.remove();const f=document.createElement('script');f.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';f.onload=ok;f.onerror=no;document.head.appendChild(f)};document.head.appendChild(s)});
-async function backup(){try{await loadX()}catch(e){return toast('برای ساخت اکسل یک‌بار اتصال اینترنت لازم است')}
+async function excelBackup(){try{await loadX()}catch(e){return toast('برای ساخت اکسل یک‌بار اتصال اینترنت لازم است')}
  const D=Store.d,U=XLSX.utils,wb=U.book_new(),add=(r,n)=>U.book_append_sheet(wb,U.json_to_sheet(r),n);
  add(D.customers.map(c=>({نام:c.name,'اسم مستعار':c.alias||'',تلفن:c.phone||'',نوع:c.guest?'مهمان':'مشتری',مانده:Store.bal(c.id)})),'مشتریان');
  add(D.tx.map(t=>({تاریخ:dt(t.date),مشتری:Store.nm(t.customerId),مبلغ:t.amt,نوع:TYPE[t.type],سررسید:t.dueDate?dt(t.dueDate):'',منبع:t.source,وضعیت:t.status,توضیح:t.description})),'ثبت‌ها');
  add(D.log.map(e=>({زمان:dt(e.ts)+' '+tm(e.ts),شرح:logText(e)})),'تغییرات');
  const name=`nasie-${new Date().toISOString().slice(0,10)}.xlsx`,blob=new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/octet-stream'}),a=document.createElement('a');
- a.href=URL.createObjectURL(blob);a.download=name;a.click();setv('lastBk',new Date().toDateString());
+ if(window.NasieAndroid)await window.NasieAndroid.exportBlob(blob,name);else{const downloadUrl=URL.createObjectURL(blob);a.href=downloadUrl;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(downloadUrl),60000)}
  const s=D.set;if(s.token&&s.chat){const f=new FormData();f.append('chat_id',s.chat);f.append('document',blob,name);
-  try{const r=await fetch(`https://api.telegram.org/bot${s.token}/sendDocument`,{method:'POST',body:f});toast(r.ok?'بکاپ ذخیره و به تلگرام فرستاده شد':'بکاپ ذخیره شد؛ ارسال تلگرام ناموفق بود')}catch(e){toast('بکاپ ذخیره شد؛ تلگرام در دسترس نیست')}}else toast('بکاپ اکسل ذخیره شد');render()}
+  try{const r=await fetch(`https://api.telegram.org/bot${s.token}/sendDocument`,{method:'POST',body:f});toast(r.ok?'گزارش به تلگرام ارسال شد؛ دانلود گوشی را هم بررسی کن':'دانلود گزارش درخواست شد؛ ارسال تلگرام ناموفق بود')}catch(e){toast('دانلود گزارش درخواست شد؛ تلگرام در دسترس نیست')}}else toast('دانلود گزارش اکسل درخواست شد؛ وجود فایل را بررسی کن');render()}
 // ---------- دستیار هوشمند (سازگار با OpenAI) ----------
 let chat=[];
+async function backup(){try{Store.exportJson();if(!window.NasieAndroid&&Store.writeAllowed&&!Store.blocked)setv('lastBk',new Date().toDateString());toast(window.NasieAndroid?'محل ذخیرهٔ JSON را انتخاب کن؛ منتظر پیام ذخیرهٔ فایل بمان':'دانلود JSON درخواست شد؛ وجود فایل را بررسی کن');render()}catch(e){toast(e.message)}}
 function vAI(){const s=Store.d.set;if(!s.aiKey)return'<p class="empty">برای فعال شدن، در «تنظیمات» کلید API را وارد کن.</p>';
  return`<div id="chat">${chat.map(m=>`<div class="msg ${m.r}">${esc(m.c)}</div>`).join('')||'<p class="empty">از دستیار درباره‌ی بدهی‌ها، دیرکردها و روند حساب‌ها بپرس.</p>'}</div>
  <div class="aibar"><input id="aq" placeholder="مثلا: کدام بدهکارها پرریسک‌ترند؟" onkeydown="if(event.key==='Enter')askAI()"><button class="pri" onclick="askAI()">بپرس</button></div>`}
@@ -161,7 +183,7 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  sheet(`<div class="cf"><h2>تایید ثبت ${r.source==='voice'?'🎤':''}</h2><small>«${esc(r.rawText)}» · اطمینان ${fmt(r.confidence*100)}٪</small>
  ${r.needsConfirmation?`<div class="bk" style="background:var(--warn)">نیاز به بررسی: ${esc(r.reasons.join(' · ')||'لطفا موارد را بررسی کن')}</div>`:''}
  <div class="seg"><label class="s-credit"><input type="radio" name="ty" value="credit" ${r.type==='credit'?'checked':''}><span>نسیه</span></label><label class="s-pay"><input type="radio" name="ty" value="payment" ${r.type==='payment'?'checked':''}><span>پرداخت</span></label></div>
- <div class="cf-amt"><b>${fmt(r.amount)}</b><span>تومان</span></div>
+ <label for="voice-amount">مبلغ به تومان (قابل اصلاح)</label><input id="voice-amount" inputmode="numeric" value="${r.amount}">
  ${r.colloquial?`<label class="opt"><input type="checkbox" id="kk" checked> «${fmt(r.amountRaw)} تومن» یعنی ${fmt(r.amountRaw*1000)} تومان</label>`:''}
  <label>${one?`منظورتان «${esc(cs[0].name)}» است؟`:cs.length&&!sure?'منظورتان کدام است؟':'مشتری'}</label>
  ${cs.map((x,i)=>`<label class="opt"><input type="radio" name="cs" value="${i}" ${sure&&i==0?'checked':''}> ${esc(x.name)}${x.alias?' «'+esc(x.alias)+'»':''} <small>مانده ${fmt(Store.bal(x.id))}</small></label>`).join('')}
@@ -171,26 +193,61 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  <input id="dd" type="number" inputmode="numeric" placeholder="مهلت پرداخت (روز) — خالی = پیش‌فرض" value="${r.dueDays||''}">
  </div><div class="cf-foot"><button class="glass" onclick="cancelCmd()">لغو</button><button class="pri" onclick="okCmd()">تایید</button></div>`);cmd.open=true}
 let cmd=null;
-function cancelCmd(){if(cmd)Store.vset(cmd.vid,'cancelled');closeSheet()}
-function okCmd(){const r=cmd,v=document.querySelector('input[name=cs]:checked')?.value,ty=document.querySelector('input[name=ty]:checked').value;let c;
- if(v===undefined||v==='new'){const n=$('#nn').value.trim(),a=$('#na').value.trim();if(!n&&!a)return toast('نام یا اسم مستعار را وارد کن');c=Store.addC(n||a,{alias:a,guest:$('#ng').checked})}else c=find(r.candidates[+v].id);
- const amt=$('#kk')&&!$('#kk').checked?r.amountRaw:r.amount,dd=+$('#dd').value,now=Date.now();
+function cancelCmd(){try{if(cmd&&Store.writeAllowed&&!Store.blocked)Store.vset(cmd.vid,'cancelled')}catch(e){if(!e.storeError)throw e}closeSheet()}
+function okCmd(){const r=cmd;if(!r||!r.open)return;
+ const v=document.querySelector('input[name=cs]:checked')?.value,ty=document.querySelector('input[name=ty]:checked').value;
+ if(v===undefined)return toast('مشتری را انتخاب کن');
+ let amt=Number(norm($('#voice-amount').value));if($('#kk')&&!$('#kk').checked&&amt===r.amount)amt=r.amountRaw;
+ if(!Number.isSafeInteger(amt)||amt<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن');
+ const due=$('#dd').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');
+ if(v==='new'&&!$('#nn').value.trim()&&!$('#na').value.trim())return toast('نام یا اسم مستعار را وارد کن');
+ let c;const saved=Store.batch(()=>{if(v==='new'){const n=$('#nn').value.trim(),a=$('#na').value.trim();if(!n&&!a)return toast('نام یا اسم مستعار را وارد کن');c=Store.addC(n||a,{alias:a,guest:$('#ng').checked})}else c=find(r.candidates[+v]?.id);
+ if(!c){toast('مشتری پیدا نشد؛ دوباره انتخاب کن');return false}const now=Date.now();
  Store.addTransaction({customerId:c.id,type:ty,amount:amt,date:now,dueDate:ty==='credit'?now+(dd||dys(c))*DAY:null,description:'',items:r.items||[],source:r.source,meta:{rawText:r.rawText,confidence:r.confidence,confirmed:true}});
- Store.vset(r.vid,'confirmed');$('#cmd').value='';closeSheet();alertLimit(c,ty==='credit'?1:-1)}
-function sweep(){const today=new Date().toDateString();
- for(const c of Store.d.customers){const a=an(c);if(a.overdue.length&&!c.guest&&Store.d.alerts[c.id]!==today&&Store.d.set.token){Store.d.alerts[c.id]=today;tg(`⏰ ${c.name}: ${a.overdueDays} روز از سررسید گذشته، مانده ${fmt(a.remaining)} تومان`)}}Store.save()}
+ Store.vset(r.vid,'confirmed');return true});if(!saved)return;$('#cmd').value='';voiceText='';closeSheet();alertLimit(c,ty==='credit'?1:-1)}
+function sweep(){if(!Store.writeAllowed||Store.blocked)return;const today=new Date().toDateString(),messages=[];
+ Store.batch(()=>{for(const c of Store.d.customers){const a=an(c);if(a.overdue.length&&!c.guest&&Store.d.alerts[c.id]!==today&&Store.d.set.token&&Store.d.set.chat){Store.d.alerts[c.id]=today;messages.push(`⏰ ${c.name}: ${a.overdueDays} روز از سررسید گذشته، مانده ${fmt(a.remaining)} تومان`)}}
+  if(messages.length)Store.save()});for(const message of messages)tg(message)}
 $('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')dismiss()});
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
-$('#go').onclick=()=>run($('#cmd').value,{source:'manual'});$('#cmd').onkeydown=e=>{if(e.key==='Enter')run(e.target.value,{source:'manual'})};
+function submitCmd(){if(on&&rec){rec.stop();return}const text=$('#cmd').value;run(text,{source:voiceText&&text===voiceText?'voice':'manual'})}
+$('#go').onclick=submitCmd;$('#cmd').onkeydown=e=>{if(e.key==='Enter')submitCmd()};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition,score=r=>r.intent==='tx'?r.confidence:r.intent==='ask'?(r.candidates.length?.9:.3):.95;
-let rec=null,on=false,retried=false;
-function listen(){const r=new SR();rec=r;r.lang='fa-IR';r.interimResults=true;r.maxAlternatives=5;
- r.onstart=()=>{on=true;$('#mic').classList.add('on')};r.onend=()=>{on=false;$('#mic').classList.remove('on')};
- r.onerror=e=>{if(e.error==='network'||e.error==='service-not-allowed'){if(!retried){retried=true;return setTimeout(listen,700)}retried=false;$('#cmd').focus();
-   return toast('سرویس گفتار گوگل در دسترس نیست (اینترنت/فیلتر). فعلاً از میکروفون کیبورد در همین کادر استفاده کن.')}
-  if(e.error==='no-speech')return toast('صدایی شنیده نشد');if(e.error==='aborted')return;toast(e.error==='not-allowed'?'مجوز میکروفون نیست':'خطا: '+e.error)};
- r.onresult=e=>{retried=false;const R=e.results[e.results.length-1];$('#cmd').value=R[0].transcript;
-  if(R.isFinal){let best=R[0].transcript,bs=-1,bc=R[0].confidence;for(let i=0;i<R.length;i++){const s=score(parseCmd(R[i].transcript,{source:'voice',stt:R[i].confidence}));if(s>bs){bs=s;best=R[i].transcript;bc=R[i].confidence}}$('#cmd').value=best;run(best,{source:'voice',stt:bc})}};
- try{r.start()}catch(e){}}
-if(!SR)$('#mic').hidden=true;else $('#mic').onclick=()=>{if(on)return rec.stop();retried=false;listen()};
-render();sweep();if(window.Liquid)Liquid.init();setTimeout(()=>document.body.classList.remove('intro'),3300);
+let rec=null,on=false,voiceDraft=[],voiceText='';
+function speechChoices(results){let choices=[{text:'',confidence:0,count:0}];
+ for(let i=0;i<results.length;i++){const result=results[i];if(!result.isFinal)continue;const next=[];
+  for(const prior of choices)for(let j=0;j<Math.min(result.length,3);j++){const a=result[j];next.push({text:(prior.text+' '+a.transcript).trim(),confidence:prior.confidence+(a.confidence||0),count:prior.count+1})}
+  choices=next.slice(0,12)}
+ return choices.filter(x=>x.text).map(x=>({text:x.text,confidence:x.count?x.confidence/x.count:0}))
+  .filter((x,i,a)=>a.findIndex(y=>y.text===x.text)===i)}
+function reviewVoice(){if(!voiceDraft.length)return;
+ sheet(`<h2>🎤 این را شنیدم</h2><p>متن را بررسی کن؛ بعد نام، مبلغ و نوع ثبت را تایید می‌کنی.</p>
+ <label for="voice-edit">متن قابل اصلاح</label><textarea id="voice-edit" rows="3" style="width:100%;font:inherit;padding:12px;border-radius:12px">${esc(voiceDraft[0].text)}</textarea>
+ ${voiceDraft.length>1?`<label>برداشت‌های دیگر از صدا</label>${voiceDraft.map((x,i)=>`<label class="opt"><input type="radio" name="voice-choice" value="${i}" ${i===0?'checked':''} onchange="document.querySelector('#voice-edit').value=voiceDraft[+this.value].text"> ${esc(x.text)}</label>`).join('')}`:''}
+ <div class="row"><button onclick="closeSheet();listen()">دوباره بگو</button><button class="pri" onclick="useVoice()">بررسی دستور</button></div>`)}
+function useVoice(){const text=$('#voice-edit').value.trim();if(!text)return toast('متن دستور را وارد کن');
+ const selected=voiceDraft.find(x=>x.text===text);voiceText=text;$('#cmd').value=text;closeSheet();run(text,{source:'voice',stt:selected?selected.confidence:0})}
+function micState(active){on=active;$('#mic').classList.toggle('on',active);$('#mic').setAttribute('aria-pressed',String(active));$('#mic').setAttribute('aria-label',active?'پایان ضبط':'شروع دستور صوتی');$('#mic').textContent=active?'⏹':'🎤';$('#cmd').readOnly=active}
+function listen(){if(on)return;if(!SR)return toast('از میکروفون کیبورد برای نوشتن دستور استفاده کن');
+ if(window.isSecureContext===false)return toast('میکروفون به آدرس HTTPS نیاز دارد');
+ let r;try{r=new SR()}catch(e){return toast('میکروفون آماده نشد؛ دوباره امتحان کن')}
+ rec=r;voiceDraft=[];let heard=false,failed=false,timer=null,previous=$('#cmd').value;
+ r.lang='fa-IR';r.continuous=true;r.interimResults=true;r.maxAlternatives=5;micState(true);
+ r.onstart=()=>{if(rec!==r)return;toast('صحبت کن؛ برای پایان، دوباره میکروفون را بزن');timer=setTimeout(()=>{if(rec===r)r.stop()},30000)};
+ r.onend=()=>{if(rec!==r)return;clearTimeout(timer);rec=null;micState(false);
+  if(voiceDraft.length){$('#cmd').value=voiceDraft[0].text;voiceText=voiceDraft[0].text;reviewVoice()}
+  else {if(!heard)$('#cmd').value=previous;if(!failed)toast(heard?'متن نهایی دریافت نشد؛ متن را اصلاح کن و ثبت را بزن':'صدایی شنیده نشد؛ دوباره امتحان کن')}};
+ r.onerror=e=>{if(rec!==r)return;failed=true;clearTimeout(timer);
+  if(e.error==='offline-unavailable')return toast('تشخیص گفتار آفلاین روی این گوشی آماده نیست؛ به اندروید ۱۲ به بالا و مدل فارسی نیاز دارد. متن را دستی یا با کیبورد وارد کن.');
+  const messages={network:'سرویس تشخیص گفتار در دسترس نیست؛ اتصال اینترنت را بررسی کن یا از میکروفون کیبورد استفاده کن.','service-not-allowed':'سرویس گفتار در این مرورگر فعال نیست؛ از میکروفون کیبورد استفاده کن.','not-allowed':'دسترسی میکروفون را در تنظیمات گوشی و مرورگر فعال کن.','audio-capture':'میکروفون در دسترس نیست؛ برنامه‌های ضبط دیگر را ببند.','no-speech':'صدایی شنیده نشد؛ نزدیک‌تر به میکروفون صحبت کن.','language-not-supported':'این مرورگر تشخیص گفتار فارسی را پشتیبانی نمی‌کند.'};
+  if(e.error!=='aborted')toast(messages[e.error]||'تشخیص صدا متوقف شد؛ دوباره امتحان کن.')};
+ r.onresult=e=>{if(rec!==r)return;heard=true;voiceDraft=speechChoices(e.results);
+  $('#cmd').value=Array.from(e.results,x=>x[0].transcript).join(' ').trim();
+  // متن موقت هرگز عملیات حسابداری اجرا نمی‌کند.
+  voiceText=$('#cmd').value};
+ try{r.start()}catch(e){rec=null;micState(false);$('#cmd').value=previous;toast('شروع ضبط ممکن نشد؛ دوباره امتحان کن')} }
+$('#mic').setAttribute('aria-label','شروع دستور صوتی');$('#mic').setAttribute('aria-pressed','false');
+if(!SR)$('#mic').onclick=()=>toast('از میکروفون کیبورد برای نوشتن دستور استفاده کن');
+else $('#mic').onclick=()=>{if(on&&rec){rec.stop();return}listen()};
+
+render();Store.startGuard(()=>render());setInterval(()=>{if(document.visibilityState!=='hidden'&&Store.writeAllowed&&!Store.blocked){Store.checkpoint();sweep()}},60000);if(window.Liquid)Liquid.init();setTimeout(()=>document.body.classList.remove('intro'),3300);
