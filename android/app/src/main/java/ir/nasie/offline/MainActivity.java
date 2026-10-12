@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
@@ -45,6 +47,8 @@ public final class MainActivity extends Activity {
  private volatile boolean storageFailed=false;
  private boolean microphonePermissionPending=false;
  private boolean systemSpeechOpen=false;
+ private int speechGeneration=0;
+ private SpeechRecognizer modelSpeech;
 
  @Override public void onCreate(Bundle state) {
   super.onCreate(state);
@@ -146,6 +150,7 @@ public final class MainActivity extends Activity {
    });
    return reply(true,null);
   }
+  @JavascriptInterface public void downloadOfflineModel(){runOnUiThread(()->requestOfflineModel());}
   @JavascriptInterface public void startSpeech(int id){runOnUiThread(()->beginSpeech(id));}
   @JavascriptInterface public void stopSpeech(int id,boolean abort){runOnUiThread(()->{
    if(id!=speechId)return;
@@ -156,57 +161,127 @@ public final class MainActivity extends Activity {
   web.evaluateJavascript("window.NasieAndroid&&window.NasieAndroid.speech("+id+","+JSONObject.quote(type)+","+
    (payload==null?"null":payload instanceof String?JSONObject.quote((String)payload):payload.toString())+");",null);
  }
+ private void modelStatus(String message){
+  if(web!=null)web.evaluateJavascript("window.NasieAndroid&&window.NasieAndroid.modelStatus("+JSONObject.quote(message)+");",null);
+ }
+ private void closeModelSpeech(){
+  if(modelSpeech!=null){modelSpeech.destroy();modelSpeech=null;}
+ }
+ private boolean hasPersian(java.util.List<String> languages){
+  for(String lang:languages)if(lang.equalsIgnoreCase("fa")||lang.toLowerCase(java.util.Locale.ROOT).startsWith("fa-"))return true;
+  return false;
+ }
+ @android.annotation.SuppressLint("NewApi")
+ private void requestOfflineModel(){
+  if(Build.VERSION.SDK_INT<33){modelStatus("بررسی و دانلود داخل برنامه به اندروید ۱۳ به بالا نیاز دارد؛ تنظیمات سرویس گفتار گوشی را بررسی کن.");return;}
+  if(speechId!=0){modelStatus("ابتدا ضبط صدا را تمام کن.");return;}
+  if(!SpeechRecognizer.isOnDeviceRecognitionAvailable(this)){modelStatus("سرویس گفتار آفلاین روی این گوشی موجود نیست. سرویس گفتار Google را به‌روز و فعال کن.");return;}
+  closeModelSpeech();
+  try{
+   final SpeechRecognizer recognizer=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+   modelSpeech=recognizer;
+   Intent intent=speechIntent(true);
+   modelStatus("در حال بررسی مدل فارسی…");
+   recognizer.checkRecognitionSupport(intent,getMainExecutor(),new android.speech.RecognitionSupportCallback(){
+    public void onSupportResult(android.speech.RecognitionSupport support){
+     if(modelSpeech!=recognizer)return;
+     if(hasPersian(support.getInstalledOnDeviceLanguages())){modelStatus("مدل فارسی آفلاین نصب است؛ با حالت پرواز میکروفون را امتحان کن.");closeModelSpeech();return;}
+     if(!hasPersian(support.getSupportedOnDeviceLanguages())&&!hasPersian(support.getPendingOnDeviceLanguages())){
+      modelStatus("این سرویس مدل فارسی آفلاین ارائه نمی‌کند؛ از طریق این سرویس قابل نصب نیست. گفتار آنلاین و ورود دستی در دسترس‌اند.");closeModelSpeech();return;
+     }
+     if(!hasInternet()){modelStatus("برای دانلود مدل ابتدا به اینترنت وصل شو.");closeModelSpeech();return;}
+     try{if(Build.VERSION.SDK_INT>=34){
+      modelStatus("درخواست دانلود مدل فارسی ارسال شد…");
+      recognizer.triggerModelDownload(intent,getMainExecutor(),new android.speech.ModelDownloadListener(){
+       public void onProgress(int progress){if(modelSpeech==recognizer)modelStatus("دانلود مدل فارسی: "+progress+"٪");}
+       public void onSuccess(){if(modelSpeech==recognizer){modelStatus("مدل فارسی آماده است؛ در حالت پرواز امتحان کن.");closeModelSpeech();}}
+       public void onScheduled(){if(modelSpeech==recognizer){modelStatus("دانلود در صف است؛ بعداً دوباره بررسی کن. مدل هنوز آماده نیست.");closeModelSpeech();}}
+       public void onError(int error){if(modelSpeech==recognizer){modelStatus("دانلود انجام نشد (کد "+error+"). اینترنت و سرویس گفتار گوشی را بررسی کن.");closeModelSpeech();}}
+      });
+     }else{
+      recognizer.triggerModelDownload(intent);
+      modelStatus("دانلود درخواست شد؛ کمی بعد دوباره همین دکمه را بزن تا نصب مدل بررسی شود.");
+     }}catch(Exception e){modelStatus("سرویس درخواست دانلود مدل را نپذیرفت؛ تنظیمات گفتار گوشی را بررسی کن.");closeModelSpeech();}
+    }
+    public void onError(int error){if(modelSpeech==recognizer){modelStatus("سرویس نتوانست پشتیبانی مدل را بررسی کند (کد "+error+"). تنظیمات گفتار گوشی را بررسی کن.");closeModelSpeech();}}
+   });
+  }catch(Exception e){modelStatus("درخواست مدل انجام نشد؛ سرویس گفتار گوشی را بررسی کن.");closeModelSpeech();}
+ }
+ private boolean hasInternet(){
+  ConnectivityManager manager=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+  if(manager==null)return false;
+  NetworkCapabilities caps=manager.getNetworkCapabilities(manager.getActiveNetwork());
+  return caps!=null&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+ }
+ private Intent speechIntent(boolean offline){
+  return new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+   .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+   .putExtra(RecognizerIntent.EXTRA_LANGUAGE,"fa-IR")
+   .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5)
+   .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true)
+   .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,offline);
+ }
  private void beginSpeech(int id){
   if(speechId!=0)endSpeech("aborted");speechId=id;
-  if(Build.VERSION.SDK_INT<31||!SpeechRecognizer.isOnDeviceRecognitionAvailable(this)){offerSystemSpeech(id);return;}
   if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
    microphonePermissionPending=true;
    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC_PERMISSION);return;
   }
+  startRecognizer(id,!hasInternet());
+ }
+ private void emitTranscript(int id,Bundle bundle,boolean complete){
+  ArrayList<String> texts=bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+  float[] scores=bundle.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
+  if(texts==null||texts.isEmpty())return;
   try{
-   speech=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+   JSONArray confidence=new JSONArray();
+   if(scores!=null)for(float score:scores)confidence.put(Float.isFinite(score)?Math.max(0,score):0);
+   emitSpeech(id,complete?"result":"partial",new JSONObject().put("texts",new JSONArray(texts)).put("confidence",confidence));
+  }catch(Exception ignored){}
+ }
+ @android.annotation.SuppressLint("NewApi")
+ private void startRecognizer(int id,boolean offline){
+  if(speechId!=id)return;
+  final int generation=++speechGeneration;
+  if(speech!=null){SpeechRecognizer old=speech;speech=null;old.cancel();old.destroy();}
+  if(offline&&(Build.VERSION.SDK_INT<31||!SpeechRecognizer.isOnDeviceRecognitionAvailable(this))){endSpeech("offline-unavailable");return;}
+  if(!offline&&!SpeechRecognizer.isRecognitionAvailable(this)){offerSystemSpeech(id);return;}
+  emitSpeech(id,"mode",offline?"offline":"online");
+  try{
+   speech=offline?SpeechRecognizer.createOnDeviceSpeechRecognizer(this):SpeechRecognizer.createSpeechRecognizer(this);
    speech.setRecognitionListener(new RecognitionListener(){
-    public void onReadyForSpeech(Bundle b){if(speech!=null&&speechId==id)emitSpeech(id,"start",null);}
+    private boolean current(){return speech!=null&&speechId==id&&speechGeneration==generation;}
+    public void onReadyForSpeech(Bundle b){if(current())emitSpeech(id,"start",null);}
     public void onBeginningOfSpeech(){}
     public void onRmsChanged(float rms){}
     public void onBufferReceived(byte[] buffer){}
     public void onEndOfSpeech(){}
-    public void onPartialResults(Bundle b){}
+    public void onPartialResults(Bundle b){if(current())emitTranscript(id,b,false);}
     public void onEvent(int event,Bundle b){}
     public void onError(int error){
-     if(speech==null||speechId!=id)return;
+     if(!current())return;
+     if(!offline&&(error==SpeechRecognizer.ERROR_NETWORK||error==SpeechRecognizer.ERROR_NETWORK_TIMEOUT||error==SpeechRecognizer.ERROR_SERVER)){
+      emitSpeech(id,"fallback",null);startRecognizer(id,true);return;
+     }
      String code=error==SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS?"not-allowed":
       error==SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED||error==SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE?"language-not-supported":
       error==SpeechRecognizer.ERROR_NO_MATCH||error==SpeechRecognizer.ERROR_SPEECH_TIMEOUT?"no-speech":
-      error==SpeechRecognizer.ERROR_AUDIO?"audio-capture":"offline-unavailable";
-     if(code.equals("language-not-supported")||code.equals("offline-unavailable"))offerSystemSpeech(id);else endSpeech(code);
+      error==SpeechRecognizer.ERROR_AUDIO?"audio-capture":"service-not-allowed";
+     if(!offline&&(code.equals("service-not-allowed")||code.equals("language-not-supported")))offerSystemSpeech(id);else endSpeech(code);
     }
-    public void onResults(Bundle b){
-     if(speech==null||speechId!=id)return;
-     ArrayList<String> texts=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-     float[] scores=b.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
-     try{
-      JSONArray confidence=new JSONArray();
-      if(scores!=null)for(float score:scores)confidence.put(Float.isFinite(score)?Math.max(0,score):0);
-      if(texts!=null&&!texts.isEmpty())emitSpeech(id,"result",new JSONObject().put("texts",new JSONArray(texts)).put("confidence",confidence));
-     }catch(Exception ignored){}
-     endSpeech(null);
-    }
+    public void onResults(Bundle b){if(!current())return;emitTranscript(id,b,true);endSpeech(null);}
    });
-   Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-    .putExtra(RecognizerIntent.EXTRA_LANGUAGE,"fa-IR")
-    .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5).putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,true);
-   speech.startListening(intent);
-   web.postDelayed(()->{if(speech!=null&&speechId==id)endSpeech("no-speech");},35000);
-  }catch(Exception e){offerSystemSpeech(id);}
+   speech.startListening(speechIntent(offline));
+   web.postDelayed(()->{if(speech!=null&&speechId==id&&speechGeneration==generation)endSpeech("no-speech");},35000);
+  }catch(Exception e){if(offline)endSpeech("offline-unavailable");else offerSystemSpeech(id);}
  }
  private void offerSystemSpeech(int id){
   if(speechId!=id)return;
-  if(speech!=null){SpeechRecognizer old=speech;speech=null;speechId=0;old.cancel();old.destroy();speechId=id;}
+  speechGeneration++;
+  if(speech!=null){SpeechRecognizer old=speech;speech=null;old.cancel();old.destroy();}
   emitSpeech(id,"fallback",null);
   new AlertDialog.Builder(this).setTitle("گفتار فارسی")
-   .setMessage("مدل آفلاین فارسی روی این گوشی آماده نیست. سرویس گفتار سیستم می‌تواند فارسی را دریافت کند، اما ممکن است صدا را برای پردازش اینترنتی ارسال کند. دفتر حساب‌ها داخل برنامه می‌ماند.")
+   .setMessage("سرویس گفتار مستقیم آماده نشد. می‌توانی پنجرهٔ گفتار گوشی را امتحان کنی؛ ممکن است صدا را برای پردازش اینترنتی ارسال کند. دفتر حساب‌ها داخل برنامه می‌ماند.")
    .setPositiveButton("استفاده از سرویس گوشی",(dialog,which)->{
     if(speechId!=id)return;
     Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -220,7 +295,7 @@ public final class MainActivity extends Activity {
    .setOnCancelListener(dialog->{if(speechId==id)endSpeech("aborted");}).show();
  }
  private void endSpeech(String error){
-  int id=speechId;speechId=0;
+  int id=speechId;speechId=0;speechGeneration++;
   if(speech!=null){speech.cancel();speech.destroy();speech=null;}
   if(id==0)return;
   if(error!=null)emitSpeech(id,"error",error);emitSpeech(id,"end",null);
@@ -272,7 +347,7 @@ public final class MainActivity extends Activity {
  @Override protected void onResume(){
   super.onResume();if(web!=null){web.onResume();web.evaluateJavascript("if(typeof Store!=='undefined'&&Store.acquireWriter)Store.acquireWriter()",null);}
  }
- @Override protected void onDestroy(){endSpeech("aborted");if(fileCallback!=null)fileCallback.onReceiveValue(null);web.removeJavascriptInterface("NasieNative");web.destroy();super.onDestroy();}
+ @Override protected void onDestroy(){closeModelSpeech();endSpeech("aborted");if(fileCallback!=null)fileCallback.onReceiveValue(null);web.removeJavascriptInterface("NasieNative");web.destroy();super.onDestroy();}
  @Override public void onBackPressed(){
   web.evaluateJavascript("(()=>{if(typeof dismiss==='function'&&!document.querySelector('#sheet').hidden){dismiss();return false}return true})()",result->{
    if("true".equals(result))new AlertDialog.Builder(this).setMessage("برنامه بسته شود؟")

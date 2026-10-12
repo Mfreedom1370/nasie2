@@ -15,6 +15,14 @@
  const encode=bytes=>{let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary)};
  let exportName='';
  window.NasieAndroid={
+  lastModelStatus:'',
+  downloadOfflineModel(){bridge.downloadOfflineModel()},
+  modelStatus(message){
+   this.lastModelStatus=String(message);
+   const status=document.querySelector('#offline-model-status');
+   if(status)status.textContent=this.lastModelStatus;
+   if(typeof toast==='function')toast(this.lastModelStatus);
+  },
   exportText(text,name,type){call('exportFile',encode(new TextEncoder().encode(text)),name,type);exportName=name},
   async exportBlob(blob,name){call('exportFile',encode(new Uint8Array(await blob.arrayBuffer())),name,blob.type||'application/octet-stream');exportName=name},
   saved(ok){
@@ -35,9 +43,10 @@
   const r=session;if(!r||r.id!==id)return;
   if(type==='start')r.onstart?.();
   if(type==='fallback')r.onfallback?.();
-  if(type==='result'){
+  if(type==='mode')r.onmode?.({mode:payload});
+  if(type==='result'||type==='partial'){
    const alternatives=payload.texts.map((transcript,i)=>({transcript,confidence:Math.max(0,payload.confidence?.[i]||0)}));
-   alternatives.isFinal=true;r.onresult?.({results:[alternatives]});
+   alternatives.isFinal=type==='result';r.onresult?.({results:[alternatives]});
   }
   if(type==='error')r.onerror?.({error:payload});
   if(type==='end'){session=null;r.onend?.()}

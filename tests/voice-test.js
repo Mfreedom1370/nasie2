@@ -29,6 +29,14 @@ assert.equal(parse('علی رضایی پنجاه هزار تومان داده').
 assert.equal(parse('محمد نصرتی پنجاه هزار تومان نسیه').customerId, null);
 assert.equal(parse('علی رضایی پنجاه هزار تومان نسیه پرداخت').needsConfirmation, true);
 assert.equal(parse('علی رضایی ۵۰۰۰۰۰ ریال پرداخت').needsConfirmation, true);
+const suggest = (s, voice=false) => vm.runInContext(`customerSuggestions(${JSON.stringify(s)},${voice})`,parser);
+assert.equal(suggest('علي رضايي پنجاه هزار تومان نسیه')[0].id,'a');
+assert.equal(suggest('علی ر')[0].id,'a');
+assert.equal(suggest('علی رزایی پنجاه هزار تومان نسیه',true)[0].id,'a');
+assert.equal(suggest('محمد نصرتی').length,2,'duplicate names stay available for explicit choice');
+assert.equal(suggest('برو تنظیمات').length,0);
+vm.runInContext("Store.d.customers[0].alias='همسایه';",parser);
+assert.equal(suggest('همسایه پنجاه هزار تومان پرداخت')[0].id,'a');
 
 const elements = new Map();
 const element = id => {
@@ -46,6 +54,7 @@ class Recognition {
 const browser = vm.createContext({
   window:{SpeechRecognition:Recognition,isSecureContext:true},
   document:{querySelector:element}, $:element,
+  updateCmdSuggestions(){},customerSuggestions:()=>[],customerChoiceRows:()=>'',
   Store:{}, parseCmd:()=>({intent:'ask',candidates:[]}),
   esc:s=>String(s).replace(/</g,'&lt;'),
   toast:s=>messages.push(s),sheet:s=>sheets.push(s),closeSheet(){},

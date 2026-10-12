@@ -5,12 +5,13 @@ const disk=new Map(),events={},exportedFiles=[],speechCalls=[];
 let fail=false;
 const reply=(ok,value)=>JSON.stringify({ok,value,error:ok?undefined:'disk full'});
 const context=vm.createContext({TextEncoder,Uint8Array,btoa:s=>Buffer.from(s,'binary').toString('base64'),
- document:{visibilityState:'visible',addEventListener:(name,fn)=>events[name]=fn},navigator:{},
+ document:{visibilityState:'visible',querySelector:()=>null,addEventListener:(name,fn)=>events[name]=fn},navigator:{},
  NasieNative:{
   get:key=>reply(true,disk.get(key)??null),
   put:(key,value)=>{if(fail)return reply(false);disk.set(key,value);return reply(true)},
   remove:key=>{disk.delete(key);return reply(true)},
   exportFile:(...args)=>{exportedFiles.push(args);return reply(true)},
+  downloadOfflineModel:()=>speechCalls.push(['model']),
   startSpeech:id=>speechCalls.push(['start',id]),stopSpeech:(...args)=>speechCalls.push(['stop',...args])
  }});
 vm.runInContext('window=globalThis;',context);
@@ -33,4 +34,12 @@ native.speech(id,'end',null);native.speech(id,'result',{texts:['late event'],con
 assert.deepEqual(seen,['start','fallback','علی پنجاه هزار تومان نسیه','end']);
 const cancelled=new context.SpeechRecognition();cancelled.start();cancelled.abort();
 const next=new context.SpeechRecognition();next.start();next.stop();assert.equal(speechCalls.at(-1)[0],'stop');
+const flags=[],modes=[];
+next.onresult=e=>flags.push(e.results[0].isFinal);next.onmode=e=>modes.push(e.mode);
+native.speech(next.id,'mode','offline');
+native.speech(next.id,'partial',{texts:['علی'],confidence:[]});
+native.speech(next.id,'result',{texts:['علی رضایی'],confidence:[]});
+assert.deepEqual(flags,[false,true]);assert.deepEqual(modes,['offline']);
+native.downloadOfflineModel();assert.equal(speechCalls.at(-1)[0],'model');
+native.modelStatus('در صف');assert.equal(native.lastModelStatus,'در صف');
 console.log('PASS: Android storage rollback, UTF-8 export, lifecycle guard, speech alternatives and stale events.');

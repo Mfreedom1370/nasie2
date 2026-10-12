@@ -106,7 +106,7 @@ nav button{flex:1;background:none;box-shadow:none;-webkit-backdrop-filter:none;b
 :root{--bg:#07151f;--card:rgba(235,247,255,.12);--text:#f5faff;--muted:rgba(235,245,253,.74);--bd:rgba(255,255,255,.19);--ac:#d6edff;--ac2:#83b4c9;--bad:#ffb8aa;--warn:#f7d497;--ok:#b3efcf;--gu:#c8e7f2}
 html,body{height:100%;overflow:hidden}
 body{padding:0;display:block;background:#07151f}
-body::before{content:'';position:fixed;inset:0;background:linear-gradient(110deg,rgba(4,16,24,.72),rgba(4,16,24,.27)),url('../PS/background.png') center 34%/cover no-repeat;pointer-events:none}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(110deg,rgba(4,16,24,.84),rgba(4,16,24,.49)),url('../PS/background.png') center 34%/cover no-repeat;pointer-events:none}
 .phone{width:100%;height:100dvh;zoom:1;border-radius:0;box-shadow:none;background:transparent;transform:none}
 .screen{background:transparent;padding-bottom:185px;scroll-behavior:smooth}
 .hero{height:90px;overflow:visible;animation:none}.hero-bg,.hero::after{display:none}
@@ -172,3 +172,18 @@ button:focus-visible,a:focus-visible{outline:2px solid white;outline-offset:3px}
  .sh{max-width:700px;margin:0 auto;border-radius:28px 28px 0 0}#toast{max-width:550px;margin:auto}
 }
 @media(prefers-reduced-motion:reduce){.wave-line{stroke-dashoffset:0}.wave-area{clip-path:none}}
+
+/* Customer suggestions stay below the command field, within the floating dock. */
+.cmd{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
+#cmd-suggestions[hidden]{display:none}
+#cmd-suggestions{grid-column:1/-1;max-height:min(230px,32dvh);overflow-y:auto;border-top:1px solid var(--bd);padding-top:6px;overscroll-behavior:contain}
+.suggestion-heading{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px;padding:0 6px 4px}
+.suggestion-heading button{padding:2px 9px;background:none;box-shadow:none;font-size:20px}
+.cmd-option,.customer-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:right;border-radius:14px;padding:9px 12px;margin:4px 0;background:rgba(255,255,255,.07);box-shadow:none;backdrop-filter:none}
+.cmd-option b{font-size:13px;font-weight:500}.cmd-option small{font-size:11px}.cmd-option:disabled{cursor:default;opacity:.8}
+.cmd-option.highlight,.cmd-option:hover,.customer-choice:hover{background:rgba(255,255,255,.19)}
+.customer-choice{padding:14px;border:1px solid var(--bd);margin:9px 0}.customer-choice>span:last-child{text-align:left;white-space:nowrap}
+.temporary-customers{padding:17px;margin:20px 0 16px;max-width:620px}
+.temporary-list{max-height:180px;overflow-y:auto;margin-top:9px;overscroll-behavior:contain}
+.temporary-list button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:right;padding:10px 0;background:none;box-shadow:none;backdrop-filter:none;border-radius:0;border-bottom:1px solid var(--bd);font-size:13px}
+.temporary-list button:last-child{border:0}.temporary-list b{font-weight:500;text-align:left;white-space:nowrap}

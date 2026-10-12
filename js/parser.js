@@ -1,4 +1,4 @@
-// nasie-release:15
+// nasie-release:16
 // خط لوله‌ی صدا:  Audio → STT → متن خام → Normalizer → Shop Dictionary → Parser → Command ساختاری → تایید کاربر → Transaction
 // Parser هرگز مستقیم تراکنش نمی‌سازد؛ فقط Command (با confidence و needsConfirmation) برمی‌گرداند.
 const NW={صفر:0,یک:1,یه:1,دو:2,سه:3,چهار:4,چار:4,پنج:5,شش:6,هفت:7,هشت:8,نه:9,ده:10,یازده:11,دوازده:12,سیزده:13,چهارده:14,پونزده:15,پانزده:15,شانزده:16,شونزده:16,هفده:17,هجده:18,هیجده:18,نوزده:19,بیست:20,سی:30,چهل:40,پنجاه:50,شصت:60,هفتاد:70,هشتاد:80,نود:90,صد:100,یکصد:100,دویست:200,سیصد:300,چهارصد:400,چارصد:400,پانصد:500,پونصد:500,ششصد:600,هفتصد:700,هشتصد:800,هشصد:800,نهصد:900};
@@ -31,6 +31,26 @@ function cands(name){const q=norm(name).split(' ').filter(Boolean),j=q.join(' ')
   let v=f===j?1:q.every(t=>nt.includes(t))?.92:q.every(t=>nt.some(x=>sim(t,x)>=.8))?.85:sim(j,f)*.8;
   if(f.replace(/ /g,'').includes(q.join('')))v=Math.max(v,.9);s=Math.max(s,v)}return{c,s}}).filter(x=>x.s>=.7).sort((a,b)=>b.s-a.s).slice(0,5)
   .map(x=>({id:x.c.id,name:x.c.name,alias:x.c.alias||'',score:x.s}))}
+function customerSuggestions(raw,phonetic=false){
+ const parsed=parseCmd(String(raw||'')),query=parsed.name||'';
+ if(!['ask','tx'].includes(parsed.intent)||!query.trim())return [];
+ const key=s=>norm(String(s||'')).replace(/[آأإ]/g,'ا').replace(/ؤ/g,'و').replace(/ئ/g,'ی').toLowerCase();
+ const sound=s=>phonetic?s.replace(/[ثص]/g,'س').replace(/[ذضظ]/g,'ز').replace(/ط/g,'ت'):s;
+ const q=key(query),qt=q.split(' ').filter(Boolean),compact=q.replace(/ /g,'');
+ return Store.d.customers.map(c=>{
+  let score=0;
+  for(const label of [c.name,c.alias].filter(Boolean)){
+   const name=key(label),nt=name.split(' '),nc=name.replace(/ /g,'');
+   let value=name===q?1:nc===compact?.99:nc.includes(compact)?.94:0;
+   if(compact.length>=2){
+    const tokenScore=qt.reduce((sum,t)=>sum+Math.max(0,...nt.map(n=>n.startsWith(t)?.96:Math.max(sim(t,n),sim(sound(t),sound(n))*.94))),0)/qt.length;
+    value=Math.max(value,tokenScore*.88,sim(sound(compact),sound(nc))*.82);
+   }
+   score=Math.max(score,value);
+  }
+  return {id:c.id,name:c.name,alias:c.alias||'',score};
+ }).filter(c=>c.score>=.54).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'fa')).slice(0,6);
+}
 function parseCmd(raw,o={}){
  const base={rawText:raw,source:o.source||'manual'};let tk=normalizeText(raw),dueDays=null;
  // سررسید گفته‌شده: «سررسید ده روز» / «مهلت دو هفته»

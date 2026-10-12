@@ -1,5 +1,5 @@
 // Immutable, scoped offline release. Core assets change together only on a new release.
-const V='nasie-v15';
+const V='nasie-v16';
 const PREFIX='nasie:'+new URL('.',self.location.href).pathname+':',CACHE=PREFIX+V;
 const CORE=['./','PS/background.png','index.html','manifest.webmanifest','css/style.css','js/store.js','js/safety.js','js/jdate.js','js/parser.js','js/ledger.js','js/liquid.js','js/telegram.js','js/app.js','icon-192.png','icon-512.png','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2','js/vendor/xlsx.full.min.js'];
 const abs=p=>new URL(p,self.location.href).href;
@@ -7,8 +7,8 @@ self.addEventListener('install',e=>e.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
  try{await Promise.all(CORE.map(async p=>{const r=await fetch(abs(p),{cache:'reload'});
   if(!r.ok)throw new Error('precache '+p);
-  if(p.startsWith('js/')&&!p.startsWith('js/vendor/')&&!(await r.clone().text()).includes('nasie-release:15'))throw new Error('release mismatch '+p);
-  if(p==='index.html'&&!(await r.clone().text()).includes('name="nasie-release" content="15"'))throw new Error('release mismatch index');
+  if(p.startsWith('js/')&&!p.startsWith('js/vendor/')&&!(await r.clone().text()).includes('nasie-release:16'))throw new Error('release mismatch '+p);
+  if(p==='index.html'&&!(await r.clone().text()).includes('name="nasie-release" content="16"'))throw new Error('release mismatch index');
   await cache.put(abs(p),r)}))}
  catch(error){await caches.delete(CACHE);throw error}
  // Existing clients keep their previous release until they close or explicitly update.
