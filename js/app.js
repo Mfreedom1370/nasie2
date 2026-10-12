@@ -1,4 +1,4 @@
-// nasie-release:16
+// nasie-release:17
 Store.load();
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
