@@ -28,6 +28,8 @@ main{padding:26px 16px 0}
 /* ---- سیستم دکمه‌ی شیشه‌ای ---- */
 .glass,button{border:0;background:rgba(255,255,255,.03);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.25);-webkit-backdrop-filter:blur(2px) saturate(1.3);backdrop-filter:blur(2px) saturate(1.3);transition:transform .2s var(--ease)}
 .glass:active,button:active{transform:scale(.96)}
+button:not(:disabled):not([aria-disabled="true"]):active{filter:brightness(1.35);box-shadow:inset 0 0 0 2px rgba(255,255,255,.62)}
+@media(prefers-reduced-motion:reduce){button:not(:disabled):active{transform:none}}
 .glass.circle{width:58px;height:44px;border-radius:22px;font-size:18px;display:grid;place-items:center;padding:0}.glass.pill{height:54px;border-radius:27px}
 button{font:inherit;color:var(--text);border-radius:14px;padding:9px 16px;cursor:pointer}
 .pri,#mic,#go{background:linear-gradient(180deg,#e9aa68,var(--ac2));color:#1a0b05;font-weight:500;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(0,0,0,.2)}

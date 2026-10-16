@@ -85,6 +85,11 @@ for(const match of settings.matchAll(/(?:onclick|onchange)="([^"]*)"/g)){
  const handler=match[1].replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');new Function(handler);
 }
 execute("Store.addC('نام \" نقل‌قول')");assert.ok(execute('vSet()').includes('بازیابی JSON'));
+execute("const guestLow=Store.addC('موقت کم',{guest:true}),guestHigh=Store.addC('موقت زیاد',{guest:true}),guestCredit=Store.addC('موقت بستانکار',{guest:true});Store.addTransaction({customerId:guestLow.id,amount:50000});Store.addTransaction({customerId:guestHigh.id,amount:150000});Store.addTransaction({customerId:guestCredit.id,amount:20000,type:'payment'});");
+const temporaryMarkup=execute('vDash()').split('class="temporary-list">')[1].split('</section>')[0];
+assert.ok(temporaryMarkup.indexOf('موقت زیاد')<temporaryMarkup.indexOf('موقت کم'));
+assert.ok(temporaryMarkup.indexOf('موقت کم')<temporaryMarkup.indexOf('موقت نمونه'));
+assert.ok(temporaryMarkup.indexOf('موقت نمونه')<temporaryMarkup.indexOf('موقت بستانکار'),'credit follows zero balances');
 const before=storage.getItem('nasie');
 const input={value:'backup.json',files:[{text:async()=>JSON.stringify({schema:2,customers:[],tx:[],trash:[],set:{},log:[],voiceLog:[],alerts:{}})}]};
 context.testInput=input;

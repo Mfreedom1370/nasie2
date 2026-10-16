@@ -1,5 +1,19 @@
-// nasie-release:18
+// nasie-release:19
 Store.load();
+// Delegation covers buttons added by sheets, lists and calendar redraws.
+const buttonAnimations=new WeakMap();
+function buttonFeedback(event){
+ const button=event.target?.closest?.('button');
+ if(!button||button.disabled||button.getAttribute('aria-disabled')==='true'||typeof button.animate!=='function')return;
+ const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+ buttonAnimations.get(button)?.cancel();
+ const frames=reduced?[{filter:'brightness(1.35)'},{filter:'brightness(1)'}]:
+  [{transform:'scale(.96)',filter:'brightness(1.35)'},{transform:'scale(1)',filter:'brightness(1)'}];
+ const animation=button.animate(frames,{duration:reduced?120:240,easing:'ease-out'});
+ buttonAnimations.set(button,animation);
+ animation.onfinish=()=>{if(buttonAnimations.get(button)===animation)buttonAnimations.delete(button)};
+}
+document.addEventListener('click',buttonFeedback,true);
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
 
@@ -47,7 +61,7 @@ function uiIcon(name){
 function vDash(){
  const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),over=db.filter(x=>x.b>lim(x.c));
  const late=db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays);
- const gs=cs.filter(x=>x.c.guest).sort((a,b)=>age(b.c)-age(a.c)),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1;
+ const gs=cs.filter(x=>x.c.guest).sort((a,b)=>b.b-a.b||a.c.name.localeCompare(b.c.name,'fa')),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1;
  const bk=new Date().getHours()>=Store.d.set.bkHour&&Store.d.set.lastBk!==new Date().toDateString();
  const maximum=Math.max(...ms.flatMap(x=>[x.d,x.p]),1);
  const bars=ms.map((x,i)=>`<rect x="${i*48+8}" y="${95-x.d/maximum*80}" width="16" height="${x.d/maximum*80}" rx="4" fill="var(--bad)"/><rect x="${i*48+26}" y="${95-x.p/maximum*80}" width="16" height="${x.p/maximum*80}" rx="4" fill="var(--ok)"/><text x="${i*48+24}" y="114" text-anchor="middle" font-size="10" fill="var(--mut)">${x.l}</text>`).join('');
