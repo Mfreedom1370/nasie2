@@ -1,10 +1,21 @@
-// nasie-release:19
+// nasie-release:20
 Store.load();
-// Delegation covers buttons added by sheets, lists and calendar redraws.
+// Cover every action surface, including customer cards and radio/checkbox labels.
 const buttonAnimations=new WeakMap();
+let pressEcho=null,pressEchoAnimation=null;
+function showPressEcho(rect,reduced){
+ if(!rect.width||!rect.height)return;
+ if(!pressEcho){pressEcho=document.createElement('span');pressEcho.className='press-echo';pressEcho.setAttribute('aria-hidden','true');document.body.appendChild(pressEcho)}
+ pressEchoAnimation?.cancel();pressEcho.hidden=false;
+ Object.assign(pressEcho.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
+ const animation=pressEcho.animate(reduced?[{opacity:.7},{opacity:0}]:[{opacity:.7,transform:'scale(.97)'},{opacity:0,transform:'scale(1.02)'}],{duration:240,easing:'ease-out'});
+ pressEchoAnimation=animation;
+ animation.onfinish=()=>{if(pressEchoAnimation===animation){pressEcho.hidden=true;pressEchoAnimation=null}};
+}
 function buttonFeedback(event){
- const button=event.target?.closest?.('button');
- if(!button||button.disabled||button.getAttribute('aria-disabled')==='true'||typeof button.animate!=='function')return;
+ if(event.type==='pointerdown'&&(event.button!==0||event.isPrimary===false))return;
+ const button=event.target?.closest?.('button,[role="button"],[onclick],label.opt,.seg label,summary,a[href]');
+ if(!button||button.matches(':disabled,[aria-disabled="true"]')||button.querySelector('input:disabled')||typeof button.animate!=='function')return;
  const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
  buttonAnimations.get(button)?.cancel();
  const frames=reduced?[{filter:'brightness(1.35)'},{filter:'brightness(1)'}]:
@@ -12,7 +23,13 @@ function buttonFeedback(event){
  const animation=button.animate(frames,{duration:reduced?120:240,easing:'ease-out'});
  buttonAnimations.set(button,animation);
  animation.onfinish=()=>{if(buttonAnimations.get(button)===animation)buttonAnimations.delete(button)};
+ // Keep a brief visual acknowledgement when an action immediately rebuilds its sheet.
+ if(event.type==='click'){
+  const rect=button.getBoundingClientRect(),sheetAtPress=document.querySelector('#sheet .sh');
+  queueMicrotask(()=>{if(!button.isConnected||document.querySelector('#sheet .sh')!==sheetAtPress)showPressEcho(rect,reduced)});
+ }
 }
+document.addEventListener('pointerdown',buttonFeedback,true);
 document.addEventListener('click',buttonFeedback,true);
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);

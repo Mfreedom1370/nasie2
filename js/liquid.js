@@ -1,4 +1,4 @@
-// nasie-release:19
+// nasie-release:20
 // جلوه‌ی «شیشه‌ی مایع»: برای هر عنصر [data-liquid] یک نقشه‌ی جابجایی بر پایه‌ی SDF مستطیل گرد ساخته می‌شود
 // و با feDisplacementMap به‌عنوان backdrop-filter اعمال می‌شود. در مرورگرهای ناسازگار blur معمولی (از CSS) می‌ماند.
 function liquidMap(w,h,r,bezel){w=Math.max(2,Math.round(w));h=Math.max(2,Math.round(h));r=Math.min(r,w/2,h/2);bezel=bezel||Math.min(w,h)*.3;
