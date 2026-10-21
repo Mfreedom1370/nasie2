@@ -158,8 +158,8 @@ nav .ui-icon{width:21px;height:21px}
 #sheet{background:rgba(1,12,20,.48)}
 .sh{background:rgba(10,28,40,.94);border:1px solid var(--bd);max-height:92dvh;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}
 .sh .box{padding-top:0;scroll-padding-top:95px}
-.customer-header{position:sticky;top:0;z-index:5;background:#18303f;padding:16px 0 14px;margin-bottom:16px;border-bottom:1px solid var(--bd);isolation:isolate}
-.customer-header h2{overflow-wrap:anywhere}.customer-header .av{flex:none;background:rgba(233,249,255,.86);color:#193445}
+.customer-header{position:sticky;top:0;z-index:5;background:rgba(20,47,63,.56);backdrop-filter:blur(18px) saturate(115%);-webkit-backdrop-filter:blur(18px) saturate(115%);padding:16px 0 14px;margin-bottom:16px;border-bottom:1px solid var(--bd);isolation:isolate}
+.customer-header .customer-identity{min-width:0;flex:1}.customer-header .header-balance{margin-inline-start:auto;max-width:50%;font-size:18px;line-height:1.5;overflow-wrap:anywhere}.header-balance small{display:block;font-size:10px}.customer-header h2{overflow-wrap:anywhere}.customer-header .av{flex:none;background:rgba(233,249,255,.86);color:#193445}
 .cf-foot{background:rgba(14,37,51,.95)}.bk{background:rgba(228,244,255,.90);color:#173242}.msg.user{background:rgba(215,237,251,.86);color:#102d40}
 button:focus-visible,a:focus-visible{outline:2px solid white;outline-offset:3px}
 @media(min-width:861px){

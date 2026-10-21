@@ -1,4 +1,4 @@
-// nasie-release:20
+// nasie-release:21
 // تبدیل تاریخ شمسی ⇄ میلادی (الگوریتم jalaali)
 const J=(()=>{
  const g2j=(gy,gm,gd)=>{const gdm=[0,31,59,90,120,151,181,212,243,273,304,334];let jy=gy<=1600?0:979;gy-=gy<=1600?621:1600;

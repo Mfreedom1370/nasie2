@@ -1,4 +1,4 @@
-// nasie-release:20
+// nasie-release:21
 // ذخیره‌سازی محلی — نسخه‌ی ۲ (schema 2): ساختار Transaction حرفه‌ای.
 // فیلدهای قدیمی cid/amt/note/ts به‌عنوان «آینه» نگه داشته می‌شوند تا داده‌ها و کدهای قدیمی خراب نشوند.
 // type: credit(نسیه، +) | payment(پرداخت، −) | adjustment(تعدیل، amount علامت‌دار)
