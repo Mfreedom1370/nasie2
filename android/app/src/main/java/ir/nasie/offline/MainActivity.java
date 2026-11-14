@@ -49,6 +49,10 @@ public final class MainActivity extends Activity {
  private boolean systemSpeechOpen=false;
  private int speechGeneration=0;
  private SpeechRecognizer modelSpeech;
+ private LocalSpeech localSpeech;
+ private boolean localRecording=false;
+ private final java.util.concurrent.ExecutorService backupExecutor=java.util.concurrent.Executors.newSingleThreadExecutor();
+ private static final int GOOGLE_DRIVE=44;
 
  @Override public void onCreate(Bundle state) {
   super.onCreate(state);
@@ -105,6 +109,8 @@ public final class MainActivity extends Activity {
    }
   });
   web.addJavascriptInterface(new NativeBridge(),"NasieNative");
+  localSpeech=new LocalSpeech(this);localSpeech.warm(()->{},()->{});
+  if(!storageFailed&&storageState.has("nasie")){final String raw=storageState.optString("nasie");backupExecutor.execute(()->BackupEngine.record(getApplicationContext(),raw));}
   web.loadUrl(HOME);
  }
  private String reply(boolean ok,Object value){
@@ -112,7 +118,7 @@ public final class MainActivity extends Activity {
   catch(Exception e){return "{\"ok\":false,\"error\":\"Storage unavailable\"}";}
  }
  private boolean validKey(String key){return key!=null&&key.matches("nasie(?:_[a-zA-Z0-9_]+)?");}
- private boolean commitState(JSONObject next){
+ private boolean commitState(JSONObject next){synchronized(BackupEngine.LOCK){
   FileOutputStream out=null;
   try{
    byte[] bytes=next.toString().getBytes(StandardCharsets.UTF_8);
@@ -121,7 +127,24 @@ public final class MainActivity extends Activity {
    storageState=next;return true;
   }catch(Exception e){if(out!=null)ledgerFile.failWrite(out);storageFailed=true;return false;}
  }
+ }
+ private void cloudMessage(String text){BackupEngine.status(this,text);web.evaluateJavascript("if(typeof toast==='function')toast("+JSONObject.quote(text)+");if(typeof tab!=='undefined'&&tab==='set')render();",null);}
+ private void connectDrive(){
+  com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).authorize(BackupEngine.driveRequest()).addOnSuccessListener(result->{
+   if(result.hasResolution()){try{startIntentSenderForResult(result.getPendingIntent().getIntentSender(),GOOGLE_DRIVE,null,0,0,0);}catch(Exception e){cloudMessage("پنجرهٔ مجوز گوگل باز نشد");}}
+   else {cloudMessage("مجوز درایو آماده است؛ نسخه‌های در صف دوباره امتحان می‌شوند");BackupEngine.sendSoon(this);}
+  }).addOnFailureListener(error->cloudMessage("اتصال گوگل انجام نشد؛ تنظیم OAuth و امضای APK را بررسی کن"));
+ }
  public final class NativeBridge {
+  @JavascriptInterface public String cloudStatus(){return BackupEngine.summary(MainActivity.this);}
+  @JavascriptInterface public void connectDrive(){runOnUiThread(()->MainActivity.this.connectDrive());}
+  @JavascriptInterface public void retryCloudBackup(){backupExecutor.execute(()->{try{BackupEngine.prepare(MainActivity.this,true);BackupEngine.sendSoon(MainActivity.this);}catch(Exception e){BackupEngine.status(MainActivity.this,"بکاپ آماده نشد؛ تنظیمات را بررسی کن");}});}
+  @JavascriptInterface public String appIdentity(){try{
+   android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(getPackageName(),android.content.pm.PackageManager.GET_SIGNATURES);
+   byte[] digest=java.security.MessageDigest.getInstance("SHA-1").digest(info.signatures[0].toByteArray());StringBuilder sha=new StringBuilder();for(byte b:digest){if(sha.length()>0)sha.append(":");sha.append(String.format(java.util.Locale.US,"%02X",b&255));}
+   return new JSONObject().put("package",getPackageName()).put("sha1",sha.toString()).toString();
+  }catch(Exception e){return "{}";}}
+
   @JavascriptInterface public synchronized String get(String key){
    if(storageFailed)return reply(false,"ذخیره‌سازی ناموفق بود؛ برنامه را کامل ببند و دوباره باز کن");
    if(!validKey(key))return reply(false,"Invalid storage key");
@@ -130,7 +153,7 @@ public final class MainActivity extends Activity {
   @JavascriptInterface public synchronized String put(String key,String value){
    if(storageFailed)return reply(false,"Storage write stopped");
    if(!validKey(key))return reply(false,"Invalid storage key");
-   try{return reply(commitState(new JSONObject(storageState.toString()).put(key,value)),null);}catch(Exception e){storageFailed=true;return reply(false,"Storage write failed");}
+   try{boolean saved=commitState(new JSONObject(storageState.toString()).put(key,value));if(saved&&"nasie".equals(key)){final String snapshotDay=BackupEngine.day();backupExecutor.execute(()->BackupEngine.record(getApplicationContext(),value,snapshotDay));}return reply(saved,null);}catch(Exception e){storageFailed=true;return reply(false,"Storage write failed");}
   }
   @JavascriptInterface public synchronized String remove(String key){
    if(storageFailed)return reply(false,"Storage write stopped");
@@ -150,11 +173,11 @@ public final class MainActivity extends Activity {
    });
    return reply(true,null);
   }
-  @JavascriptInterface public void downloadOfflineModel(){runOnUiThread(()->requestOfflineModel());}
+  @JavascriptInterface public void downloadOfflineModel(){runOnUiThread(()->{modelStatus("آماده‌سازی مدل فارسی همراه برنامه…");localSpeech.warm(()->modelStatus("مدل فارسی آفلاین آماده است؛ اینترنت لازم نیست"),()->modelStatus("مدل همراه APK آماده نشد؛ نسخهٔ کامل برنامه را نصب کن"));});}
   @JavascriptInterface public void startSpeech(int id){runOnUiThread(()->beginSpeech(id));}
   @JavascriptInterface public void stopSpeech(int id,boolean abort){runOnUiThread(()->{
    if(id!=speechId)return;
-   if(abort)endSpeech("aborted");else if(speech!=null)speech.stopListening();else endSpeech("aborted");
+   if(abort)endSpeech("aborted");else if(localRecording)localSpeech.stop();else if(speech!=null)speech.stopListening();else endSpeech("aborted");
   });}
  }
  private void emitSpeech(int id,String type,Object payload){
@@ -227,7 +250,20 @@ public final class MainActivity extends Activity {
    microphonePermissionPending=true;
    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC_PERMISSION);return;
   }
-  startRecognizer(id,!hasInternet());
+  String mode="offline";try{mode=new JSONObject(storageState.optString("nasie","{}")).getJSONObject("set").optString("voiceMode","offline");}catch(Exception ignored){}
+  if(!mode.equals("online")||!hasInternet())startBundledSpeech(id);else startRecognizer(id,false);
+ }
+ private void startBundledSpeech(int id){
+  if(speechId!=id)return;speechGeneration++;
+  if(speech!=null){SpeechRecognizer old=speech;speech=null;old.cancel();old.destroy();}
+  localRecording=true;emitSpeech(id,"mode","offline");
+  localSpeech.start(new LocalSpeech.Events(){
+   public void ready(){if(speechId==id)emitSpeech(id,"start",null);}
+   public void text(String text,boolean complete){if(speechId!=id)return;if(text.isEmpty()){if(complete)endSpeech("no-speech");return;}try{
+    emitSpeech(id,complete?"result":"partial",new JSONObject().put("texts",new JSONArray().put(text)).put("confidence",new JSONArray()));
+   }catch(Exception ignored){}if(complete)endSpeech(null);}
+   public void error(){if(speechId==id)endSpeech("offline-unavailable");}
+  });
  }
  private void emitTranscript(int id,Bundle bundle,boolean complete){
   ArrayList<String> texts=bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -261,7 +297,7 @@ public final class MainActivity extends Activity {
     public void onError(int error){
      if(!current())return;
      if(!offline&&(error==SpeechRecognizer.ERROR_NETWORK||error==SpeechRecognizer.ERROR_NETWORK_TIMEOUT||error==SpeechRecognizer.ERROR_SERVER)){
-      emitSpeech(id,"fallback",null);startRecognizer(id,true);return;
+      emitSpeech(id,"fallback",null);startBundledSpeech(id);return;
      }
      String code=error==SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS?"not-allowed":
       error==SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED||error==SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE?"language-not-supported":
@@ -295,7 +331,7 @@ public final class MainActivity extends Activity {
    .setOnCancelListener(dialog->{if(speechId==id)endSpeech("aborted");}).show();
  }
  private void endSpeech(String error){
-  int id=speechId;speechId=0;speechGeneration++;
+  int id=speechId;speechId=0;speechGeneration++;localRecording=false;if(localSpeech!=null)localSpeech.cancel();
   if(speech!=null){speech.cancel();speech.destroy();speech=null;}
   if(id==0)return;
   if(error!=null)emitSpeech(id,"error",error);emitSpeech(id,"end",null);
@@ -315,6 +351,12 @@ public final class MainActivity extends Activity {
  }
  @Override protected void onActivityResult(int request,int result,Intent data){
   super.onActivityResult(request,result,data);
+  if(request==GOOGLE_DRIVE){
+   if(result==RESULT_OK&&data!=null){try{
+    com.google.android.gms.auth.api.identity.AuthorizationResult auth=com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data);
+    if(auth.getAccessToken()==null)throw new Exception();cloudMessage("درایو متصل شد؛ صف بکاپ بررسی می‌شود");BackupEngine.sendSoon(this);
+   }catch(Exception e){cloudMessage("مجوز درایو کامل نشد");}}else cloudMessage("اتصال درایو لغو شد");
+  }
   if(request==SYSTEM_SPEECH){
    systemSpeechOpen=false;int id=speechId;
    if(id!=0&&result==RESULT_OK&&data!=null){
@@ -347,7 +389,7 @@ public final class MainActivity extends Activity {
  @Override protected void onResume(){
   super.onResume();if(web!=null){web.onResume();web.evaluateJavascript("if(typeof Store!=='undefined'&&Store.acquireWriter)Store.acquireWriter()",null);}
  }
- @Override protected void onDestroy(){closeModelSpeech();endSpeech("aborted");if(fileCallback!=null)fileCallback.onReceiveValue(null);web.removeJavascriptInterface("NasieNative");web.destroy();super.onDestroy();}
+ @Override protected void onDestroy(){closeModelSpeech();endSpeech("aborted");if(localSpeech!=null)localSpeech.destroy();backupExecutor.shutdown();if(fileCallback!=null)fileCallback.onReceiveValue(null);web.removeJavascriptInterface("NasieNative");web.destroy();super.onDestroy();}
  @Override public void onBackPressed(){
   web.evaluateJavascript("(()=>{if(typeof dismiss==='function'&&!document.querySelector('#sheet').hidden){dismiss();return false}return true})()",result->{
    if("true".equals(result))new AlertDialog.Builder(this).setMessage("برنامه بسته شود؟")

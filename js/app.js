@@ -1,4 +1,4 @@
-// nasie-release:21
+// nasie-release:22
 Store.load();
 // Cover every action surface, including customer cards and radio/checkbox labels.
 const buttonAnimations=new WeakMap();
@@ -37,7 +37,13 @@ addEventListener('error',storageError);addEventListener('unhandledrejection',sto
 const $=s=>document.querySelector(s),esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;')};
 const fmt=n=>Math.abs(Math.round(n)).toLocaleString('fa-IR'),dt=ts=>new Date(ts).toLocaleDateString('fa-IR'),tm=ts=>new Date(ts).toLocaleTimeString('fa-IR',{hour:'2-digit',minute:'2-digit'});
 const lim=c=>c.limit||Store.d.set.limit,dys=c=>c.days||Store.d.set.days,find=id=>Store.d.customers.find(x=>x.id===id);
-let tab='dash',pending=null,qv='',ld=new Date().setHours(0,0,0,0);
+let tab='dash',pending=null,qv='',ld=new Date().setHours(0,0,0,0),entryDay=null,settingsEditing=false;
+function entryTime(){if(entryDay===null)return Date.now();const now=new Date(),date=new Date(entryDay);date.setHours(now.getHours(),now.getMinutes(),now.getSeconds(),now.getMilliseconds());return date.getTime()}
+function resetEntryDay(){entryDay=null;ld=new Date().setHours(0,0,0,0);if(typeof logMonth!=='undefined')logMonth=null;if(typeof cmd!=='undefined'&&cmd?.open){cmd.entryDate=null;const label=$('#entry-confirm-date');if(label)label.textContent='تاریخ ثبت: '+dt(Date.now())}}
+function entryDateNotice(){return entryDay===null?'':`<div class="bk entry-date-notice">ثبت نسیه و پرداخت در ${dt(entryDay)} <button onclick="resetEntryDay();render()">بازگشت به امروز</button></div>`}
+function toggleSettingsEdit(){settingsEditing=!settingsEditing;render()}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){resetEntryDay();settingsEditing=false}else if(tab==='set')render()});
+
 const an=c=>Ledger.analyze(c.id),age=c=>an(c).daysSinceOldestDebt||0;
 const TYPE={credit:'نسیه',payment:'پرداخت',adjustment:'تعدیل'},SRC={manual:'✍️ دستی',voice:'🎤 صوتی',barcode:'📦 بارکد',import:'📥 انتقالی'};
 function dueLbl(c){const a=an(c);if(a.overdueDays>0)return[`${fmt(a.overdueDays)} روز دیرکرد`,'warn'];if(a.todayDue)return['امروز سررسید','warn'];if(a.nextDue)return[`سررسید ${fmt(a.nextDue.daysLeft)} روز دیگر`,''];return['','']}
@@ -49,7 +55,7 @@ const logText=e=>(LT[e.t]||(()=>e.t))(e);
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3000)}
 function sheet(h){hideCmdSuggestions();if(cmd)cmd.open=false;$('#sheet').innerHTML=`<div class="sh"><div class="xrow"><button class="x" onclick="dismiss()" aria-label="بستن">✕</button></div><div class="box">${h}</div></div>`;$('#sheet').hidden=false}
 function dismiss(){if(cmd&&cmd.open)cancelCmd();else closeSheet()}
-function closeSheet(){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;render()}
+function closeSheet(refresh=true){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;if(refresh)render()}
 let counterFrame=null,counterGeneration=0;
 function anim(){if(counterFrame!==null)cancelAnimationFrame(counterFrame);counterFrame=null;const generation=++counterGeneration;
  const counters=Array.from(document.querySelectorAll('[data-n]'),el=>({el,value:Number(el.dataset.n)||0})),start=performance.now();
@@ -60,12 +66,12 @@ function anim(){if(counterFrame!==null)cancelAnimationFrame(counterFrame);counte
   if(p<1&&counters.some(x=>x.el.isConnected!==false))counterFrame=requestAnimationFrame(frame);
  };frame(start);
  document.querySelectorAll('main>*').forEach((el,i)=>el.style.setProperty('--i',Math.min(i,12)));document.querySelectorAll('main .kpis').forEach(k=>[...k.children].forEach((el,j)=>el.style.setProperty('--j',j)))}
-function render(){document.body.dataset.tab=tab;
+function render(){if(tab==='dash')resetEntryDay();if(tab!=='set')settingsEditing=false;document.body.dataset.tab=tab;
  const storageMessage=Store.blocked||(!Store.writeAllowed?(Store.guardMessage||'ثبت فعلاً متوقف است'):Store.backupWarning);
  $('#storage-status').innerHTML=storageMessage?`<div class="bk">${esc(storageMessage)} <button onclick="tab='set';render()">بکاپ و بازیابی</button>${!Store.writeAllowed&&Store.acquireWriter?'<button onclick="Store.acquireWriter()">فعال‌کردن ثبت</button>':''}</div>`:'';
 $('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b data-n="${Store.total()}"></b><span class="tl">تومان</span>`;
  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
- $('#view').innerHTML=({dash:vDash,list:vList,log:vLog,ai:vAI,set:vSet})[tab]();document.body.classList.toggle('ai',tab==='ai');anim()}
+ $('#view').innerHTML=({dash:vDash,list:vList,log:vLog,ai:vAI,set:vSet})[tab]();$('#view').insertAdjacentHTML?.('afterbegin',entryDateNotice());document.body.classList.toggle('ai',tab==='ai');anim()}
 // ---------- داشبورد ----------
 function months(){const out=[],today=J.today();
  for(let i=5;i>=0;i--){let y=today[0],m=today[1]-i;while(m<1){m+=12;y--}
@@ -144,13 +150,13 @@ function profile(id){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c)
  ${dl?`<p class="note ${dc}">${dl}${od?' · قدیمی‌ترین بدهی باز: '+dt(od.date)+' (مانده '+fmt(od.remaining)+')':''}</p>`:''}
  <small>حد بدهی: ${fmt(lim(c))} · مهلت پیش‌فرض: ${fmt(dys(c))} روز</small>${c.note?`<p class="note">${esc(c.note)}</p>`:''}
  ${a.open.length?`<label>بدهی‌های باز (پرداخت‌ها به‌ترتیب قدیمی‌ترین تسویه می‌شوند)</label>${[...a.open].reverse().sort((a,b)=>b.date-a.date||b.tx.createdAt-a.tx.createdAt).map(d=>`<div class="tx"><span>${dt(d.date)} · سررسید ${d.dueDate?dt(d.dueDate):'—'}<small class="${d.state==='overdue'||d.state==='today'?'warn':''}">${dsLbl(d)}</small></span><b>${fmt(d.remaining)} <small>از ${fmt(d.amount)}</small></b></div>`).join('')}`:''}
- <label>ثبت دستی</label><div class="row"><input id="ma" type="text" inputmode="numeric" oninput="formatMoneyInput(this)" placeholder="مبلغ (تومان)"><input id="mn" placeholder="توضیح"></div>
+ <label>ثبت دستی <small>تاریخ: ${dt(entryTime())}</small></label><div class="row"><input id="ma" type="text" inputmode="numeric" oninput="formatMoneyInput(this)" placeholder="مبلغ (تومان)"><input id="mn" placeholder="توضیح"></div>
  <div class="row"><input id="md" type="number" inputmode="numeric" placeholder="مهلت (روز) — خالی = ${fmt(dys(c))}"></div>
  <div class="row"><button class="pri" onclick="manual('${id}',1)">+ نسیه</button><button onclick="manual('${id}',-1)">− پرداخت</button></div>
  <label>تاریخچه</label>${Store.live().filter(t=>t.customerId===id).reverse().sort((a,b)=>b.date-a.date||b.createdAt-a.createdAt).map(t=>`<div class="tx"><span>${dt(t.date)} ${TYPE[t.type]} <small>${SRC[t.source]||''}${t.source==='voice'&&t.meta&&t.meta.confirmed?' · تایید شد ✔':''} ${esc(t.description)}</small></span><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button onclick="delTx('${t.id}','${id}')">🗑</button></div>`).join('')||'<small>هنوز ثبتی نیست</small>'}
  <div class="row">${LL?'<button onclick="listBy(LL)">◀ بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button><button onclick="closeSheet()">بستن</button></div>`)}
 function manual(id,sg){const a=Number(norm($('#ma').value));if(!Number.isSafeInteger(a)||a<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن');
- const due=$('#md').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');const now=Date.now();
+ const due=$('#md').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');const now=entryTime();
  Store.addTransaction({customerId:id,type:sg>0?'credit':'payment',amount:a,date:now,dueDate:sg>0?now+(dd||dys(find(id)))*DAY:null,description:$('#mn').value,source:'manual'});alertLimit(find(id),sg);profile(id)}
 function alertLimit(c,sg){const b=Store.bal(c.id);if(sg>0&&b>lim(c))tg(`⚠️ بدهی ${c.name} به ${fmt(b)} تومان رسید (حد: ${fmt(lim(c))})`)}
 function editForm(id,pre){const c=id?find(id):(pre||{});
@@ -174,7 +180,7 @@ function logJalali(ts=ld){const d=new Date(ts);return J.g2j(d.getFullYear(),d.ge
 function queueLogRender(){if(logFrame!==null)return;logFrame=requestAnimationFrame(()=>{logFrame=null;if(tab==='log')$('#view').innerHTML=vLog()})}
 function selectLogDay(ts){const value=localDay(ts);if(!Number.isFinite(value))return toast('تاریخ معتبر نیست');
  const y=logJalali(value)[0];if(y<1200||y>1600)return toast('سال باید بین ۱۲۰۰ و ۱۶۰۰ باشد');
- ld=value;logMonth=null;logPage=0;queueLogRender()}
+ ld=value;entryDay=value;logMonth=null;logPage=0;queueLogRender()}
 function shiftLogDay(step){const d=new Date(ld);d.setDate(d.getDate()+step);selectLogDay(d.getTime())}
 function changeLogMonth(year,month){const num=s=>Number(String(s).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
  const y=num(year),m=num(month);if(!Number.isInteger(y)||y<1200||y>1600||!Number.isInteger(m)||m<1||m>12){toast('سال یا ماه معتبر نیست');queueLogRender();return}
@@ -188,7 +194,7 @@ function logCalendar(){const [y,m]=logMonth||logJalali().slice(0,2),start=J.ts([
  return`<section class="log-calendar box2" aria-label="تقویم شمسی"><div class="calendar-heading"><b>تقویم شمسی</b><small>برای دیدن تغییرات، روز را انتخاب کن</small></div>
  <div class="calendar-controls"><button onclick="shiftLogMonth(-1)" aria-label="ماه قبل">‹</button><select id="log-calendar-month" aria-label="ماه" onchange="changeLogMonth($('#log-calendar-year').value,this.value)">${JM.map((name,i)=>`<option value="${i+1}" ${i+1===m?'selected':''}>${name}</option>`).join('')}</select><input id="log-calendar-year" inputmode="numeric" aria-label="سال شمسی" value="${y}" onchange="changeLogMonth(this.value,$('#log-calendar-month').value)"><button onclick="shiftLogMonth(1)" aria-label="ماه بعد">›</button></div>
  <div class="calendar-grid calendar-weekdays">${['ش','ی','د','س','چ','پ','ج'].map(x=>`<span>${x}</span>`).join('')}</div><div class="calendar-grid">${cells.join('')}</div></section>`}
-function vLog(){const end=followingDay(ld),L=Store.d.log.filter(x=>x.ts>=ld&&x.ts<end).sort((a,b)=>b.ts-a.ts),s=f=>L.filter(f).reduce((a,x)=>a+Math.abs(x.a),0);
+function vLog(){const end=followingDay(ld),L=Store.d.log.filter(x=>(x.entryDate??x.ts)>=ld&&(x.entryDate??x.ts)<end).sort((a,b)=>b.ts-a.ts),s=f=>L.filter(f).reduce((a,x)=>a+Math.abs(x.a),0);
  const pages=Math.max(1,Math.ceil(L.length/LOG_PAGE_SIZE));logPage=Math.min(logPage,pages-1);const rows=L.slice(logPage*LOG_PAGE_SIZE,(logPage+1)*LOG_PAGE_SIZE);
  return`${logCalendar()}<div class="row log-day-controls"><button onclick="shiftLogDay(-1)">◀ روز قبل</button><button onclick="selectLogDay(Date.now())">امروز</button><button onclick="shiftLogDay(1)">روز بعد ▶</button></div>
  <h3 class="dayh">${new Date(ld).toLocaleDateString('fa-IR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</h3>
@@ -202,13 +208,25 @@ function trashView(){const T=[...Store.d.trash].sort((a,b)=>b.ts-a.ts);
 function restoreT(id){toast(Store.restore(id)?'بازیابی شد':'مشتری این ثبت در دسترس نیست؛ اول مشتری را بازیابی کن');trashView()}
 function purgeT(id){if(confirm('برای همیشه پاک شود؟')){Store.purge(id);trashView()}}
 // ---------- تنظیمات و بکاپ ----------
+function cloudBackupPanel(){
+ const native=window.NasieAndroid,s=Store.d.set;
+ if(!native?.cloudStatus)return '<section class="box2"><h3>بکاپ شبانه</h3><small>ارسال خودکار در پس‌زمینه در نسخهٔ جدید APK اجرا می‌شود؛ بکاپ دستی همچنان در دسترس است.</small></section>';
+ const state=native.cloudStatus(),identity=native.appIdentity();
+ return `<section class="box2"><h3>بکاپ شبانهٔ حساب‌ها</h3><p>${esc(state.status)}</p><small>در صف: ${fmt(state.pending||0)} · تلگرام: ${esc(state.telegram||'—')} · درایو: ${esc(state.drive||'—')}</small>
+ ${settingsEditing?`<label class="opt"><input type="checkbox" ${s.autoBackup?'checked':''} onchange="setv('autoBackup',this.checked)">بکاپ خودکار JSON معمولی (شامل نام مشتری‌ها، توکن‌ها و تنظیمات؛ بدون رمزگذاری)</label>
+ <label class="opt"><input type="checkbox" ${s.backupTelegram!==false?'checked':''} onchange="setv('backupTelegram',this.checked)">ارسال به ربات تلگرام همین تنظیمات</label>
+ <label class="opt"><input type="checkbox" ${s.backupDrive!==false?'checked':''} onchange="setv('backupDrive',this.checked)">ذخیره در گوگل‌درایو خودم</label><button onclick="NasieAndroid.connectDrive()">اتصال / مجوز گوگل‌درایو</button>`:''}
+ <div class="row"><button onclick="NasieAndroid.retryCloudBackup();toast('بررسی و ارسال بکاپ درخواست شد')">آماده‌سازی و تلاش مجدد</button><button onclick="render()">به‌روزرسانی وضعیت</button></div>
+ <small>پس از ساعت تعیین‌شده، آخرین نسخهٔ روز آماده می‌شود. ارسال ناموفق تا اتصال بعدی در حافظهٔ خصوصی می‌ماند. زمان دقیق به محدودیت باتری اندروید وابسته است؛ Force stop مانع کار پس‌زمینه می‌شود.</small>
+ <details><summary>راه‌اندازی گوگل‌درایو</summary><p>در Google Cloud، Drive API را فعال کن و OAuth از نوع Android را با این مشخصات بساز؛ سپس «اتصال» را بزن. کلید امضای نسخه‌های بعدی باید ثابت بماند.</p><small dir="ltr">Package: ${esc(identity.package||'—')}<br>SHA-1: ${esc(identity.sha1||'—')}</small></details></section>`;
+}
 function requestOfflineVoice(){if(window.NasieAndroid?.downloadOfflineModel)return window.NasieAndroid.downloadOfflineModel();toast('دانلود مدل از نسخهٔ APK انجام می‌شود؛ در مرورگر از تنظیمات گفتار گوشی استفاده کن')}
 function vSet(){const s=Store.d.set;
- return`<section class="box2"><h3>دستیار صوتی فارسی</h3><small>با اینترنت، سرویس آنلاین گوشی استفاده می‌شود؛ بدون اینترنت، مدل آفلاین گوشی امتحان می‌شود. در حالت آنلاین ممکن است صدا برای پردازش ارسال شود.</small><div class="row"><button onclick="requestOfflineVoice()">بررسی / دانلود مدل فارسی</button></div><small id="offline-model-status">${esc(window.NasieAndroid?.lastModelStatus||'دانلود مدل به پشتیبانی سرویس گوشی بستگی دارد.')}</small><details><summary>راهنمای پوکو F5 / اندروید ۱۵</summary><p>با اینترنت مدل را بررسی کن. اگر سرویس فارسی را ارائه نکند، نصب مدل از داخل این برنامه ممکن نیست. Google و Speech Recognition &amp; Synthesis را از فروشگاه به‌روز کن؛ در تنظیمات گوشی، «تایپ صوتی Google» یا «تشخیص گفتار آفلاین» را جست‌وجو کن. اگر فارسی در فهرست زبان‌های قابل دانلود هست، دریافتش کن. افزودن صفحه‌کلید فارسی به‌تنهایی مدل صوتی آفلاین نصب نمی‌کند.</p></details></section><label>توکن ربات تلگرام</label><input value="${esc(s.token)}" onchange="setv('token',this.value)" dir="ltr"><label>Chat ID</label><input value="${esc(s.chat)}" onchange="setv('chat',this.value)" dir="ltr">
+ return`<div class="row"><h3>تنظیمات ذخیره‌شده</h3><button onclick="toggleSettingsEdit()">${settingsEditing?'پایان ویرایش':'ویرایش'}</button></div>${settingsEditing?`<fieldset class="settings-editor"><section class="box2"><h3>دستیار صوتی فارسی</h3><label>روش تشخیص صدا</label><select onchange="setv('voiceMode',this.value)"><option value="offline" ${s.voiceMode!=='online'?'selected':''}>فارسی آفلاین — مدل همراه برنامه</option><option value="online" ${s.voiceMode==='online'?'selected':''}>سرویس آنلاین گوشی</option></select><small>مدل فارسی داخل APK است. بار اول آماده‌سازی کمی طول می‌کشد؛ بعد از آن اینترنت و فیلترشکن لازم نیست. در حالت آنلاین ممکن است صدا برای پردازش ارسال شود.</small><div class="row"><button onclick="requestOfflineVoice()">بررسی آمادگی مدل فارسی</button></div><small id="offline-model-status">${esc(window.NasieAndroid?.lastModelStatus||'مدل همراه نسخهٔ جدید APK است؛ دانلود داخل گوشی لازم نیست.')}</small><details><summary>راهنمای گفتار آفلاین</summary><p>مدل فارسی همراه APK است؛ بار اول در حافظهٔ خصوصی آماده می‌شود. بعد از پیام آماده بودن، حالت پرواز را روشن کن و با یک مشتری نمونه امتحان کن. اگر صدای خاصی درست تشخیص داده نشد، متن را قبل از ثبت اصلاح کن یا در ویرایش تنظیمات، سرویس آنلاین را انتخاب کن.</p></details></section><label>توکن ربات تلگرام</label><input type="password" autocomplete="off" value="${esc(s.token)}" onchange="setv('token',this.value)" dir="ltr"><label>Chat ID</label><input value="${esc(s.chat)}" onchange="setv('chat',this.value)" dir="ltr">
  <label>حد بدهی پیش‌فرض (تومان)</label><input type="number" value="${s.limit}" onchange="setv('limit',+this.value)"><label>مهلت پیش‌فرض پرداخت (روز)</label><input type="number" value="${s.days}" onchange="setv('days',+this.value)">
  <label>دستیار هوشمند — سرویس</label><select class="sr" onchange="aiPreset(this.value)">${[['openai','OpenAI (ChatGPT) — پولی'],['gemini','Google Gemini — دارای سطح رایگان'],['openrouter','OpenRouter — مدل‌های رایگان :free'],['custom','سفارشی']].map(([v,l])=>`<option value="${v}" ${(AIP[v]||[])[0]===s.aiUrl?'selected':''}>${l}</option>`).join('')}</select><label>آدرس سرویس (سازگار با OpenAI)</label><input value="${esc(s.aiUrl)}" onchange="setv('aiUrl',this.value)" dir="ltr"><label>کلید API</label><input type="password" value="${esc(s.aiKey)}" onchange="setv('aiKey',this.value)" dir="ltr"><label>نام مدل</label><input value="${esc(s.aiModel)}" onchange="setv('aiModel',this.value)" dir="ltr">
  <label class="opt"><input type="checkbox" ${s.aiAnon?'checked':''} onchange="setv('aiAnon',this.checked)"> نام مشتری‌ها به کد تبدیل شود (پیشنهادی؛ سرویس‌های رایگان ممکن است داده را برای بهبود محصول استفاده کنند)</label><small>خلاصه‌ی حساب‌ها برای سرویس انتخابی ارسال می‌شود.</small><label>ساعت یادآور بکاپ روزانه (۰ تا ۲۳)</label><input type="number" min="0" max="23" value="${s.bkHour}" onchange="setv('bkHour',+this.value)">
- <div class="row"><button class="pri" onclick="backup()">📦 بکاپ کامل JSON</button><button onclick="tg('✅ پیام آزمایشی دفتر نسیه').then(o=>toast(o?'ارسال شد':'ارسال نشد؛ توکن/Chat ID را بررسی کن'))">تست تلگرام</button></div>
+ </fieldset>`:'<p class="note">اطلاعات ذخیره شده‌اند؛ برای مشاهده یا تغییر، ویرایش را بزن.</p>'}${cloudBackupPanel()}<div class="row"><button class="pri" onclick="backup()">📦 بکاپ کامل JSON</button><button onclick="tg('✅ پیام آزمایشی دفتر نسیه').then(o=>toast(o?'ارسال شد':'ارسال نشد؛ توکن/Chat ID را بررسی کن'))">تست تلگرام</button></div>
  <small>آخرین درخواست دانلود بکاپ: ${s.lastBk||'—'}. بعد از دانلود، وجود فایل را در گوشی بررسی کن. JSON برای بازیابی کامل است؛ اکسل گزارش حساب‌هاست.</small>
  <label>حفاظت از اطلاعات</label><small>نسخه محلی روزانه تا ۳ روز دارای نسخه نگه داشته می‌شود. این نسخه‌ها با پاک‌کردن داده‌های سایت از بین می‌روند؛ JSON را بیرون از گوشی هم نگه دار.</small>
  <div class="row"><button onclick="persistStorage()">درخواست ذخیره‌سازی ماندگار</button>${Store.recoveryText('previous')?'<button onclick="recoverLocal(\'previous\')">بازیابی آخرین وضعیت سالم</button>':''}${Store.recoveryText('before')?'<button onclick="recoverLocal(\'before\')">برگشت به قبل از بازیابی</button>':''}</div>
@@ -224,7 +242,7 @@ function recoverLocal(kind){try{const raw=Store.recoveryText(kind);if(!raw)retur
  Store.replacePrepared(data);render();toast('بازیابی کامل شد')}catch(e){toast(e.message)}}
 function downloadLocal(index){const b=Store.localBackups()[index];if(b)Store.download(b.raw,'nasie-local-'+b.ts+'.json')}
 async function persistStorage(){const ok=await Store.requestPersistence();toast(ok?'ذخیره‌سازی ماندگار فعال شد؛ بکاپ خارج از گوشی همچنان لازم است':'مرورگر دسترسی ماندگار نداد؛ بکاپ خارج از گوشی نگه دار')}
-function setv(k,v){Store.d.set[k]=v;Store.save()}
+function setv(k,v){const s=Store.d.set;if(s.autoBackup&&v===false&&((k==='backupTelegram'&&s.backupDrive===false)||(k==='backupDrive'&&s.backupTelegram===false))){toast('برای خاموش کردن هر دو مقصد، اول بکاپ خودکار را خاموش کن');render();return;}if(k==='autoBackup'&&v&&s.backupTelegram===false&&s.backupDrive===false)return toast('حداقل یک مقصد بکاپ را انتخاب کن');s[k]=v;Store.save()}
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((ok,no)=>{const s=document.createElement('script');s.src='js/vendor/xlsx.full.min.js';s.onload=ok;s.onerror=()=>{s.remove();const f=document.createElement('script');f.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';f.onload=ok;f.onerror=no;document.head.appendChild(f)};document.head.appendChild(s)});
 async function excelBackup(){try{await loadX()}catch(e){return toast('برای ساخت اکسل یک‌بار اتصال اینترنت لازم است')}
  const D=Store.d,U=XLSX.utils,wb=U.book_new(),add=(r,n)=>U.book_append_sheet(wb,U.json_to_sheet(r),n);
@@ -295,7 +313,7 @@ function chooseVoiceCustomer(text,o={}){
  sheet(`<h2>اول مشتری را انتخاب کن</h2><small>«${esc(text)}»</small>${customerChoiceRows(list,'acceptVoiceCustomer')||'<p class="empty">نام مرتبط پیدا نشد؛ متن را اصلاح کن.</p>'}<div class="row"><button onclick="voiceSelection=null;closeSheet()">لغو</button><button onclick="acceptVoiceCustomer('')">مشتری جدید / اصلاح نام</button></div>`);
 }
 function acceptVoiceCustomer(id){
- const choice=voiceSelection;if(!choice)return;voiceSelection=null;closeSheet();
+ const choice=voiceSelection;if(!choice)return;voiceSelection=null;closeSheet(false);
  run(choice.text,{...choice.o,customerId:id||undefined,customerChosen:true});
 }
 function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
@@ -316,9 +334,9 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  if(r.intent==='ask'){const cs=r.candidates;if(!cs.length)return toast('مشتری پیدا نشد: '+(r.name||''));if(cs.length==1||cs[0].score-cs[1].score>=.06)return profile(cs[0].id);
   return sheet(`<h2>منظورتان کدام است؟</h2>${cs.map(x=>`<div class="card" onclick="profile('${x.id}')"><b>${esc(x.name)}</b><span class="amt">${fmt(Store.bal(x.id))}</span></div>`).join('')}`)}
  if(!r.name&&!r.candidates.length)return toast('نام مشتری تشخیص داده نشد');
- cmd=r;r.vid=Store.vlog({rawText:r.rawText,type:r.type,amount:r.amount,customer:r.customerName,confidence:r.confidence,source:r.source,result:'pending'});
+ cmd=r;r.entryDate=entryTime();r.vid=Store.vlog({rawText:r.rawText,type:r.type,amount:r.amount,customer:r.customerName,confidence:r.confidence,source:r.source,result:'pending'});
  const cs=r.candidates,sure=!!r.customerId,one=cs.length===1&&!sure;
- sheet(`<div class="cf"><h2>تایید ثبت ${r.source==='voice'?'🎤':''}</h2><small>«${esc(r.rawText)}» · اطمینان ${fmt(r.confidence*100)}٪</small>
+ sheet(`<div class="cf"><small id="entry-confirm-date">تاریخ ثبت: ${dt(r.entryDate)}</small><h2>تایید ثبت ${r.source==='voice'?'🎤':''}</h2><small>«${esc(r.rawText)}» · اطمینان ${fmt(r.confidence*100)}٪</small>
  ${r.needsConfirmation?`<div class="bk" style="background:var(--warn)">نیاز به بررسی: ${esc(r.reasons.join(' · ')||'لطفا موارد را بررسی کن')}</div>`:''}
  <div class="seg"><label class="s-credit"><input type="radio" name="ty" value="credit" ${r.type==='credit'?'checked':''}><span>نسیه</span></label><label class="s-pay"><input type="radio" name="ty" value="payment" ${r.type==='payment'?'checked':''}><span>پرداخت</span></label></div>
  <label for="voice-amount">مبلغ به تومان (قابل اصلاح)</label><input id="voice-amount" inputmode="numeric" oninput="formatMoneyInput(this)" value="${moneyInputValue(r.amount)}">
@@ -340,7 +358,7 @@ function okCmd(){const r=cmd;if(!r||!r.open)return;
  const due=$('#dd').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');
  if(v==='new'&&!$('#nn').value.trim()&&!$('#na').value.trim())return toast('نام یا اسم مستعار را وارد کن');
  let c;const saved=Store.batch(()=>{if(v==='new'){const n=$('#nn').value.trim(),a=$('#na').value.trim();if(!n&&!a)return toast('نام یا اسم مستعار را وارد کن');c=Store.addC(n||a,{alias:a,guest:$('#ng').checked})}else c=find(r.candidates[+v]?.id);
- if(!c){toast('مشتری پیدا نشد؛ دوباره انتخاب کن');return false}const now=Date.now();
+ if(!c){toast('مشتری پیدا نشد؛ دوباره انتخاب کن');return false}const now=r.entryDate||entryTime();
  Store.addTransaction({customerId:c.id,type:ty,amount:amt,date:now,dueDate:ty==='credit'?now+(dd||dys(c))*DAY:null,description:'',items:r.items||[],source:r.source,meta:{rawText:r.rawText,confidence:r.confidence,confirmed:true}});
  Store.vset(r.vid,'confirmed');return true});if(!saved)return;$('#cmd').value='';voiceText='';closeSheet();alertLimit(c,ty==='credit'?1:-1)}
 function sweep(){if(!Store.writeAllowed||Store.blocked)return;const today=new Date().toDateString(),messages=[];
@@ -360,14 +378,14 @@ function speechChoices(results){let choices=[{text:'',confidence:0,count:0}];
  return choices.filter(x=>x.text).map(x=>({text:x.text,confidence:x.count?x.confidence/x.count:0}))
   .filter((x,i,a)=>a.findIndex(y=>y.text===x.text)===i)}
 function updateVoiceReview(){const list=customerSuggestions($('#voice-edit').value,true);$('#voice-matches').innerHTML=customerChoiceRows(list,'acceptVoiceReview')||'<p class="empty">نام مرتبط پیدا نشد؛ متن را اصلاح کن.</p>'}
-function acceptVoiceReview(id){const text=$('#voice-edit').value.trim();if(!text)return;const selected=voiceDraft.find(x=>x.text===text);voiceText=text;$('#cmd').value=text;closeSheet();run(text,{source:'voice',stt:selected?selected.confidence:0,customerId:id,customerChosen:true})}
+function acceptVoiceReview(id){const text=$('#voice-edit').value.trim();if(!text)return;const selected=voiceDraft.find(x=>x.text===text);voiceText=text;$('#cmd').value=text;closeSheet(false);run(text,{source:'voice',stt:selected?selected.confidence:0,customerId:id,customerChosen:true})}
 function reviewVoice(){if(!voiceDraft.length)return;
  sheet(`<h2>اول مشتری را انتخاب کن</h2><p>پیشنهادهای نزدیک به دستور صوتی؛ پس از انتخاب، مبلغ و نوع ثبت را بررسی می‌کنی.</p><div id="voice-matches">${customerChoiceRows(customerSuggestions(voiceDraft[0].text,true),'acceptVoiceReview')||'<p class="empty">نام مرتبط پیدا نشد؛ متن را اصلاح کن.</p>'}</div>
  <label for="voice-edit">متن قابل اصلاح</label><textarea id="voice-edit" oninput="updateVoiceReview()" rows="3" style="width:100%;font:inherit;padding:12px;border-radius:12px">${esc(voiceDraft[0].text)}</textarea>
  ${voiceDraft.length>1?`<label>برداشت‌های دیگر از صدا</label>${voiceDraft.map((x,i)=>`<label class="opt"><input type="radio" name="voice-choice" value="${i}" ${i===0?'checked':''} onchange="document.querySelector('#voice-edit').value=voiceDraft[+this.value].text;updateVoiceReview()"> ${esc(x.text)}</label>`).join('')}`:''}
  <div class="row"><button onclick="closeSheet();listen()">دوباره بگو</button><button class="pri" onclick="useVoice()">بررسی دستور</button></div>`)}
 function useVoice(){const text=$('#voice-edit').value.trim();if(!text)return toast('متن دستور را وارد کن');
- const selected=voiceDraft.find(x=>x.text===text);voiceText=text;$('#cmd').value=text;closeSheet();run(text,{source:'voice',stt:selected?selected.confidence:0})}
+ const selected=voiceDraft.find(x=>x.text===text);voiceText=text;$('#cmd').value=text;closeSheet(false);run(text,{source:'voice',stt:selected?selected.confidence:0})}
 function micState(active){on=active;$('#mic').classList.toggle('on',active);$('#mic').setAttribute('aria-pressed',String(active));$('#mic').setAttribute('aria-label',active?'پایان ضبط':'شروع دستور صوتی');$('#mic').textContent=active?'⏹':'🎤';$('#cmd').readOnly=active;updateCmdSuggestions()}
 function listen(){if(on)return;if(!SR)return toast('از میکروفون کیبورد برای نوشتن دستور استفاده کن');
  if(window.isSecureContext===false)return toast('میکروفون به آدرس HTTPS نیاز دارد');
@@ -375,13 +393,13 @@ function listen(){if(on)return;if(!SR)return toast('از میکروفون کیب
  rec=r;voiceDraft=[];let heard=false,failed=false,timer=null,previous=$('#cmd').value;
  r.lang='fa-IR';r.continuous=true;r.interimResults=true;r.maxAlternatives=5;micState(true);
  r.onstart=()=>{if(rec!==r)return;toast('صحبت کن؛ برای پایان، دوباره میکروفون را بزن');timer=setTimeout(()=>{if(rec===r)r.stop()},30000)};
- r.onmode=e=>{if(rec!==r)return;toast(e.mode==='offline'?'اینترنت در دسترس نیست؛ تشخیص آفلاین گوشی فعال شد':'تشخیص گفتار آنلاین فارسی فعال شد')};
+ r.onmode=e=>{if(rec!==r)return;toast(e.mode==='offline'?'تشخیص فارسی آفلاین فعال شد؛ صحبت کن':'تشخیص گفتار آنلاین فارسی فعال شد')};
  r.onfallback=()=>{if(rec===r)clearTimeout(timer)};
  r.onend=()=>{if(rec!==r)return;clearTimeout(timer);rec=null;micState(false);
   if(voiceDraft.length){$('#cmd').value=voiceDraft[0].text;voiceText=voiceDraft[0].text;reviewVoice()}
   else {if(!heard)$('#cmd').value=previous;if(!failed)toast(heard?'متن نهایی دریافت نشد؛ متن را اصلاح کن و ثبت را بزن':'صدایی شنیده نشد؛ دوباره امتحان کن')}};
  r.onerror=e=>{if(rec!==r)return;failed=true;clearTimeout(timer);
-  if(e.error==='offline-unavailable')return toast('مدل فارسی آفلاین روی گوشی آماده نیست؛ از تنظیمات «بررسی / دانلود مدل فارسی» را بزن. فعلاً متن را دستی وارد کن.');
+  if(e.error==='offline-unavailable')return toast('مدل فارسی آفلاین روی گوشی آماده نیست؛ از تنظیمات «بررسی آمادگی مدل فارسی» را بزن. فعلاً متن را دستی وارد کن.');
   const messages={network:'سرویس تشخیص گفتار در دسترس نیست؛ اتصال اینترنت را بررسی کن یا از میکروفون کیبورد استفاده کن.','service-not-allowed':'سرویس گفتار در این مرورگر فعال نیست؛ از میکروفون کیبورد استفاده کن.','not-allowed':'دسترسی میکروفون را در تنظیمات گوشی و مرورگر فعال کن.','audio-capture':'میکروفون در دسترس نیست؛ برنامه‌های ضبط دیگر را ببند.','no-speech':'صدایی شنیده نشد؛ نزدیک‌تر به میکروفون صحبت کن.','language-not-supported':window.NasieAndroid?'تشخیص فارسی در سرویس فعلی آماده نیست؛ از تنظیمات، مدل آفلاین را بررسی کن یا سرویس گفتار گوشی را به‌روز کن.':'سرویس صوتی فعلی فارسی را پشتیبانی نمی‌کند؛ زبان گفتار کیبورد را فارسی تنظیم کن.'};
   if(e.error!=='aborted')toast(messages[e.error]||'تشخیص صدا متوقف شد؛ دوباره امتحان کن.')};
  r.onresult=e=>{if(rec!==r)return;heard=true;voiceDraft=speechChoices(e.results);

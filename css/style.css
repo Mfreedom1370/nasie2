@@ -202,4 +202,5 @@ body[data-tab=log] #view .box2,body[data-tab=log] #view .kpis>div{animation:none
 :is(button,[onclick],[role="button"],label.opt,.seg label,summary,a[href]):not(:disabled):not([aria-disabled="true"]):active{filter:brightness(1.35);transform:scale(.97);box-shadow:inset 0 0 0 2px rgba(255,255,255,.62)}
 .press-echo{position:fixed;z-index:10000;pointer-events:none;border:2px solid rgba(235,252,255,.85);background:rgba(225,247,255,.14);border-radius:16px;box-sizing:border-box}
 .press-echo[hidden]{display:none}
+.settings-editor{padding:0;border:0;min-width:0}.entry-date-notice{margin-bottom:12px}.entry-date-notice button{font-size:11px}
 @media(prefers-reduced-motion:reduce){:is(button,[onclick],[role="button"],label.opt,.seg label,summary,a[href]):active{transform:none!important}}

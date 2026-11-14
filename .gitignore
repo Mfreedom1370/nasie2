@@ -1,0 +1,17 @@
+*.zip
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+*.pem
+local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/
+android/app/src/main/res/drawable/app_icon.png
+.serena/
+.codex/
+node_modules/
+.publish/

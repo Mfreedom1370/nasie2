@@ -24,6 +24,15 @@ android {
   debug { applicationIdSuffix '.test'; versionNameSuffix '-test' }
   release { if (signingFile) signingConfig signingConfigs.release; minifyEnabled false }
  }
+ testOptions { unitTests.includeAndroidResources = true }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
-dependencies { implementation 'androidx.webkit:webkit:1.12.1' }
+dependencies {
+ testImplementation 'junit:junit:4.13.2'
+ testImplementation 'org.robolectric:robolectric:4.14.1'
+ implementation 'androidx.webkit:webkit:1.12.1'
+ implementation 'androidx.work:work-runtime:2.10.1'
+ implementation 'com.google.android.gms:play-services-auth:21.4.0'
+ implementation 'com.alphacephei:vosk-android:0.3.75@aar'
+ implementation 'net.java.dev.jna:jna:5.18.1@aar'
+}

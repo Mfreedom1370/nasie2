@@ -113,6 +113,7 @@ browser.norm = s => s;
 browser.find = () => ({id:'a'});
 browser.dys = () => 30;
 browser.DAY = 86400000;
+browser.entryTime = () => Date.now();
 browser.alertLimit = () => {};
 browser.Store = {
   addC(){customersCreated++;return {id:'new'}},

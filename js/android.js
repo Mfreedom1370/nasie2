@@ -15,6 +15,10 @@
  const encode=bytes=>{let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary)};
  let exportName='';
  window.NasieAndroid={
+  cloudStatus(){try{return JSON.parse(bridge.cloudStatus())}catch(e){return {status:'برای بکاپ خودکار نسخهٔ جدید APK لازم است'}}},
+  connectDrive(){bridge.connectDrive()},
+  retryCloudBackup(){bridge.retryCloudBackup()},
+  appIdentity(){try{return JSON.parse(bridge.appIdentity())}catch(e){return {}}},
   lastModelStatus:'',
   downloadOfflineModel(){bridge.downloadOfflineModel()},
   modelStatus(message){

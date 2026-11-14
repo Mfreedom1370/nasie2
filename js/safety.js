@@ -1,4 +1,4 @@
-// nasie-release:21
+// nasie-release:22
 // Safety layer: keep schema 2 and existing ledger APIs, commit or roll back each operation.
 (() => {
  const clone=x=>JSON.parse(JSON.stringify(x));
@@ -29,6 +29,9 @@
    for(const k of ['token','chat','aiKey','aiUrl','aiModel','lastBk'])if(typeof d.set[k]!=='string')fail('تنظیمات فایل معتبر نیست');
    if(!number(d.set.limit,1)||!number(d.set.days,1)||!number(d.set.bkHour)||d.set.bkHour>23)fail('حد بدهی، مهلت یا ساعت بکاپ معتبر نیست');
    if(typeof d.set.aiAnon!=='boolean')fail('تنظیمات دستیار معتبر نیست');
+   for(const k of ['autoBackup','backupTelegram','backupDrive'])if(d.set[k]!==undefined&&typeof d.set[k]!=='boolean')fail('تنظیمات بکاپ معتبر نیست');
+   if(d.set.voiceMode!==undefined&&!['offline','online'].includes(d.set.voiceMode))fail('روش گفتار معتبر نیست');
+   for(const e of d.log)if(e.entryDate!==undefined&&!number(e.entryDate))fail('تاریخ ثبت در گزارش معتبر نیست');
    return d;
   },
   prepare(txt){let x;try{x=JSON.parse(txt)}catch(e){fail('فایل JSON قابل خواندن نیست')}

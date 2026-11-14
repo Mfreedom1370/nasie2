@@ -45,6 +45,8 @@ jobs:
           node tests/android-test.cjs
       - name: Bundle offline assets
         run: node scripts/prepare-android.cjs
+      - name: Bundle verified Persian offline voice model
+        run: python scripts/prepare-voice.py
       - name: Install SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Restore release signing key
@@ -63,7 +65,7 @@ jobs:
       - name: Build test APK (sample accounts only)
         if: inputs.build_type == 'test'
         working-directory: android
-        run: gradle --no-daemon assembleDebug lintDebug
+        run: gradle --no-daemon testDebugUnitTest assembleDebug lintDebug
       - name: Build signed release APK
         if: inputs.build_type == 'release'
         working-directory: android
@@ -72,7 +74,7 @@ jobs:
           NASIE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           NASIE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           NASIE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon assembleRelease lintRelease
+        run: gradle --no-daemon testDebugUnitTest assembleRelease lintRelease
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,5 @@
+Persian offline speech uses Vosk by Alpha Cephei and vosk-model-small-fa-0.42.
+Model: https://alphacephei.com/vosk/models
+Engine: https://github.com/alphacep/vosk-api
+Engine and Persian model are distributed under Apache License 2.0.
+The full license is included in Apache-2.0.txt.
