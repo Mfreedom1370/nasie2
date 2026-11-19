@@ -1,4 +1,4 @@
-// nasie-release:22
+// nasie-release:23
 // Safety layer: keep schema 2 and existing ledger APIs, commit or roll back each operation.
 (() => {
  const clone=x=>JSON.parse(JSON.stringify(x));
@@ -59,8 +59,12 @@
     if(current!==this._baseRaw)fail('حساب‌ها در پنجره دیگری تغییر کرده‌اند؛ صفحه را دوباره باز کن. این تغییر ثبت نشد.');
     const next=JSON.stringify(this.d);if(next===current){this._lastGood=clone(this.d);return true}
     // Preserve the exact previous data before replacing the main ledger.
-    if(current&&!this.blocked)localStorage.setItem('nasie_last_good',current);
-    localStorage.setItem('nasie',next);this._baseRaw=next;this._lastGood=clone(this.d);this.ver++;this._dirty=false;
+    if(typeof window!=='undefined'&&window.NasieAndroid?.commitLedger)window.NasieAndroid.commitLedger(current,next,!this.blocked);
+    else {
+     if(current&&!this.blocked)localStorage.setItem('nasie_last_good',current);
+     localStorage.setItem('nasie',next);
+    }
+    this._baseRaw=next;this._lastGood=clone(this.d);this.ver++;this._dirty=false;
    }catch(e){this.rollback();if(e.storeError)throw e;fail('ذخیره نشد؛ حافظه یا دسترسی ذخیره‌سازی مشکل دارد. تغییر به حساب‌ها اعمال نشد. خروجی JSON بگیر.')}
    this.checkpoint();return true;
   },

@@ -150,6 +150,20 @@ public final class MainActivity extends Activity {
    if(!validKey(key))return reply(false,"Invalid storage key");
    try{return reply(true,storageState.has(key)?storageState.getString(key):null);}catch(Exception e){return reply(false,"Storage read failed");}
   }
+  @JavascriptInterface public synchronized String commitLedger(String expected,String value,boolean keepPrevious){
+   if(storageFailed)return reply(false,"Storage write stopped");
+   try{
+    String current=storageState.has("nasie")?storageState.getString("nasie"):null;
+    if(!java.util.Objects.equals(expected,current))return reply(false,"Ledger changed");
+    JSONObject next=new JSONObject(storageState.toString()).put("nasie",value);
+    if(keepPrevious&&current!=null)next.put("nasie_last_good",current);
+    if(!commitState(next))return reply(false,"Storage write failed");
+    final String snapshotDay=BackupEngine.day();
+    try{backupExecutor.execute(()->BackupEngine.record(getApplicationContext(),value,snapshotDay));}
+    catch(java.util.concurrent.RejectedExecutionException ignored){/* Next launch reads the committed ledger. */}
+    return reply(true,null);
+   }catch(org.json.JSONException e){return reply(false,"Storage write failed");}
+  }
   @JavascriptInterface public synchronized String put(String key,String value){
    if(storageFailed)return reply(false,"Storage write stopped");
    if(!validKey(key))return reply(false,"Invalid storage key");

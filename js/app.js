@@ -1,4 +1,4 @@
-// nasie-release:22
+// nasie-release:23
 Store.load();
 // Cover every action surface, including customer cards and radio/checkbox labels.
 const buttonAnimations=new WeakMap();
@@ -90,8 +90,7 @@ function vDash(){
  const bars=ms.map((x,i)=>`<rect x="${i*48+8}" y="${95-x.d/maximum*80}" width="16" height="${x.d/maximum*80}" rx="4" fill="var(--bad)"/><rect x="${i*48+26}" y="${95-x.p/maximum*80}" width="16" height="${x.p/maximum*80}" rx="4" fill="var(--ok)"/><text x="${i*48+24}" y="114" text-anchor="middle" font-size="10" fill="var(--mut)">${x.l}</text>`).join('');
  const metric=(label,value,target,icon,tone='')=>`<button class="metric ${tone}" onclick="listBy('${target}')"><span>${uiIcon(icon)}${label}</span><b>${fmt(value)}</b><small>${target==='debtors'?'مشتری':'تومان'}</small></button>`;
  return `<div class="dashboard-layout">
- <section class="dash-story"><span class="eyebrow">${uiIcon('wallet')} دفتر حساب‌های مغازه</span>
- <h2>حساب‌ها روشن،<br>خیالت آسوده.</h2><p>نمای امروزِ نسیه‌ها و دریافتی‌ها؛ همهٔ عددها از حساب‌های ثبت‌شدهٔ خودت.</p>
+ <section class="dash-story">
  <div class="hero-balance"><small>جمع بدهی‌ها</small><b data-n="${Store.total()}">${fmt(Store.total())}</b><span>تومان</span></div>
  <section class="temporary-customers glass-panel"><div class="panel-heading"><h3>مشتری‌های موقت</h3><small>${fmt(gs.length)} مشتری</small></div><div class="temporary-list">${gs.map(x=>`<button onclick="profile('${x.c.id}')"><span>${esc(x.c.name)}<small>${x.b>0?(dueLbl(x.c)[0]||'حساب باز'):x.b<0?'بستانکار':'تسویه‌شده'}</small></span><b class="${st(x.c,x.b)}">${x.b<0?'−':''}${fmt(x.b)}<small>تومان</small></b></button>`).join('')||'<small>مشتری موقتی ثبت نشده.</small>'}</div></section>
  <button class="story-action" onclick="tab='list';render()">مشاهدهٔ مشتریان ${uiIcon('arrow')}</button></section>
@@ -142,8 +141,8 @@ function formatMoneyInput(input){
  input.value=next;
  if(offset!==null){let pos=0,count=0;while(pos<next.length&&count<offset){if(next[pos]!==',')count++;pos++}input.setSelectionRange?.(pos,pos)}
 }
-function profile(id){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c),[dl,dc]=dueLbl(c),od=a.oldestUnpaidDebt;
- sheet(`<div class="ph customer-header"><div class="av">${esc(c.name[0]||'؟')}</div><div class="customer-identity"><h2>${esc(c.name)}</h2><small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.guest?'مشتری موقت · ':''}${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'بدون شماره'}</small></div><div class="amt header-balance ${st(c,b)}"><b>${fmt(b)}</b><small>تومان${b<0?' (بستانکار)':''}</small></div></div>
+function profile(id,existingBox){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c),[dl,dc]=dueLbl(c),od=a.oldestUnpaidDebt;
+ const content=`<div class="ph customer-header"><div class="av">${esc(c.name[0]||'؟')}</div><div class="customer-identity"><h2>${esc(c.name)}</h2><small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.guest?'مشتری موقت · ':''}${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'بدون شماره'}</small></div><div class="amt header-balance ${st(c,b)}"><b>${fmt(b)}</b><small>تومان${b<0?' (بستانکار)':''}</small></div></div>
  <div class="kpis"><div><small>کل نسیه</small><b>${fmt(sumTx(id,t=>t.amt>0)+(c.prevLoan||0))}</b></div><div><small>کل پرداخت</small><b>${fmt(sumTx(id,t=>t.amt<0)+(c.prevPay||0))}</b></div>
  <div><small>روز از آخرین پرداخت</small><b>${a.daysSinceLastPayment==null?'—':fmt(a.daysSinceLastPayment)}</b></div><div><small>روز از قدیمی‌ترین بدهی</small><b>${a.daysSinceOldestDebt==null?'—':fmt(a.daysSinceOldestDebt)}</b></div></div>
  ${(()=>{const k=Ledger.risk(id);return`<p class="note rk-${k.level}">ریسک: ${RL[k.level]} (${fmt(k.score)} از ۱۰۰) — ${esc(k.reasons.join(' · '))}</p>`})()}
@@ -152,12 +151,34 @@ function profile(id){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c)
  ${a.open.length?`<label>بدهی‌های باز (پرداخت‌ها به‌ترتیب قدیمی‌ترین تسویه می‌شوند)</label>${[...a.open].reverse().sort((a,b)=>b.date-a.date||b.tx.createdAt-a.tx.createdAt).map(d=>`<div class="tx"><span>${dt(d.date)} · سررسید ${d.dueDate?dt(d.dueDate):'—'}<small class="${d.state==='overdue'||d.state==='today'?'warn':''}">${dsLbl(d)}</small></span><b>${fmt(d.remaining)} <small>از ${fmt(d.amount)}</small></b></div>`).join('')}`:''}
  <label>ثبت دستی <small>تاریخ: ${dt(entryTime())}</small></label><div class="row"><input id="ma" type="text" inputmode="numeric" oninput="formatMoneyInput(this)" placeholder="مبلغ (تومان)"><input id="mn" placeholder="توضیح"></div>
  <div class="row"><input id="md" type="number" inputmode="numeric" placeholder="مهلت (روز) — خالی = ${fmt(dys(c))}"></div>
- <div class="row"><button class="pri" onclick="manual('${id}',1)">+ نسیه</button><button onclick="manual('${id}',-1)">− پرداخت</button></div>
+ <div class="row"><button class="pri" onclick="manual('${id}',1,this)">+ نسیه</button><button onclick="manual('${id}',-1,this)">− پرداخت</button></div>
  <label>تاریخچه</label>${Store.live().filter(t=>t.customerId===id).reverse().sort((a,b)=>b.date-a.date||b.createdAt-a.createdAt).map(t=>`<div class="tx"><span>${dt(t.date)} ${TYPE[t.type]} <small>${SRC[t.source]||''}${t.source==='voice'&&t.meta&&t.meta.confirmed?' · تایید شد ✔':''} ${esc(t.description)}</small></span><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button onclick="delTx('${t.id}','${id}')">🗑</button></div>`).join('')||'<small>هنوز ثبتی نیست</small>'}
- <div class="row">${LL?'<button onclick="listBy(LL)">◀ بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button><button onclick="closeSheet()">بستن</button></div>`)}
-function manual(id,sg){const a=Number(norm($('#ma').value));if(!Number.isSafeInteger(a)||a<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن');
+ <div class="row">${LL?'<button onclick="listBy(LL)">◀ بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button><button onclick="closeSheet()">بستن</button></div>`;
+ if(existingBox){const position=existingBox.scrollTop;existingBox.innerHTML=content;existingBox.scrollTop=position;}
+ else {sheet(content);$('#sheet .sh')?.classList.add('customer-sheet');}
+}
+let manualPending=false;
+function manual(id,sg,button){if(manualPending)return;const a=Number(norm($('#ma').value));if(!Number.isSafeInteger(a)||a<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن');
  const due=$('#md').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');const now=entryTime();
- Store.addTransaction({customerId:id,type:sg>0?'credit':'payment',amount:a,date:now,dueDate:sg>0?now+(dd||dys(find(id)))*DAY:null,description:$('#mn').value,source:'manual'});alertLimit(find(id),sg);profile(id)}
+ const transaction={customerId:id,type:sg>0?'credit':'payment',amount:a,date:now,dueDate:sg>0?now+(dd||dys(find(id)))*DAY:null,description:$('#mn').value,source:'manual'};
+ const box=button?.closest('.box');
+ const save=()=>{
+  try {
+   Store.addTransaction(transaction);
+   alertLimit(find(id),sg);
+   if(!button||box?.isConnected&&!$('#sheet').hidden)profile(id,box);
+   if(button)toast(sg>0?'نسیه ثبت شد':'پرداخت ثبت شد');
+  } finally {
+   manualPending=false;
+   button?.removeAttribute('aria-busy');
+  }
+ };
+ if(!button)return save();
+ manualPending=true;
+ button.setAttribute('aria-busy','true');
+ // Let the pressed state paint before the synchronous storage commit.
+ requestAnimationFrame(()=>setTimeout(save,0));
+}
 function alertLimit(c,sg){const b=Store.bal(c.id);if(sg>0&&b>lim(c))tg(`⚠️ بدهی ${c.name} به ${fmt(b)} تومان رسید (حد: ${fmt(lim(c))})`)}
 function editForm(id,pre){const c=id?find(id):(pre||{});
  sheet(`${id?`<div class="customer-header"><h2>${esc(c.name)}</h2><small>ویرایش پروفایل مشتری</small></div>`:'<h2>مشتری جدید</h2>'}<label>نام</label><input id="en" value="${esc(c.name||'')}"><label>اسم مستعار (برای کسانی که نمی‌شناسی، مثلاً «آقای عینکی»)</label><input id="ea" value="${esc(c.alias||'')}">

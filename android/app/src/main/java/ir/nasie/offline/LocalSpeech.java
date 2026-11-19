@@ -46,22 +46,86 @@ final class LocalSpeech {
   }
   model=new Model(dir.getAbsolutePath());return model;
  }
- void warm(Runnable ready,Runnable failed){loader.execute(()->{try{load();main.post(()->{if(!destroyed)ready.run();});}catch(Exception e){main.post(()->{if(!destroyed)failed.run();});}});}
- void start(Events events){
-  cancel();final int token=++generation;
-  warm(()->{if(token!=generation)return;try{
-   recognizer=new Recognizer(model,16000);service=new SpeechService(recognizer,16000);
-   service.startListening(new org.vosk.android.RecognitionListener(){
-    private void result(String json,boolean complete){if(token!=generation)return;try{String text=new JSONObject(json).optString(complete?"text":"partial").trim();if(complete||!text.isEmpty())events.text(text,complete);if(complete)cancel();}catch(Exception e){events.error();cancel();}}
-    public void onPartialResult(String text){result(text,false);}
-    public void onResult(String text){result(text,true);}
-    public void onFinalResult(String text){result(text,true);}
-    public void onError(Exception e){if(token==generation){events.error();cancel();}}
-    public void onTimeout(){if(token==generation){events.error();cancel();}}
-   },30000);events.ready();
-  }catch(Exception e){events.error();cancel();}},events::error);
+ void warm(Runnable ready,Runnable failed){loader.execute(()->{try{load();main.post(()->{if(!destroyed)ready.run();});}catch(Exception | LinkageError e){main.post(()->{if(!destroyed)failed.run();});}});}
+ // The worker owns the recorder and recognizer. Invalidate posted callbacks on
+ // the UI thread immediately, then join Vosk's recording thread before closing it.
+ void start(Events events) {
+  cancel();
+  final int token = generation;
+  loader.execute(() -> {
+   try {
+    recognizer = new Recognizer(load(), 16000);
+    service = new SpeechService(recognizer, 16000);
+    if (!service.startListening(new org.vosk.android.RecognitionListener() {
+     private String segment = "";
+     private boolean finishing;
+
+     private boolean current() { return !destroyed && token == generation; }
+
+     public void onPartialResult(String json) {
+      if (!current() || finishing) return;
+      try {
+       String text = new JSONObject(json).optString("partial").trim();
+       if (!text.isEmpty()) events.text(text, false);
+      } catch (org.json.JSONException e) { events.error(); }
+     }
+
+     public void onResult(String json) {
+      if (!current() || finishing) return;
+      try {
+       segment = new JSONObject(json).optString("text").trim();
+       if (!segment.isEmpty()) { finishing = true; stop(); }
+      } catch (org.json.JSONException e) { events.error(); }
+     }
+
+     public void onFinalResult(String json) {
+      if (!current()) return;
+      try {
+       String tail = new JSONObject(json).optString("text").trim();
+       events.text((segment + " " + tail).trim(), true);
+      } catch (org.json.JSONException e) { events.error(); }
+     }
+
+     public void onError(Exception e) { if (current()) events.error(); }
+     public void onTimeout() { if (current()) events.text(segment, true); }
+    }, 30000)) throw new IllegalStateException("Recorder already running");
+    main.post(() -> { if (!destroyed && token == generation) events.ready(); });
+   } catch (Exception | LinkageError e) {
+    releaseRecording();
+    main.post(() -> { if (!destroyed && token == generation) events.error(); });
+   }
+  });
  }
- void stop(){if(service!=null)service.stop();}
- void cancel(){generation++;if(service!=null){service.shutdown();service=null;}if(recognizer!=null){recognizer.close();recognizer=null;}}
- void destroy(){destroyed=true;cancel();loader.execute(()->{if(model!=null){model.close();model=null;}});loader.shutdown();}
+
+ void stop() {
+  if (!destroyed) loader.execute(() -> { if (service != null) service.stop(); });
+ }
+
+ void cancel() {
+  generation++;
+  if (!destroyed) loader.execute(this::releaseRecording);
+ }
+
+ private void releaseRecording() {
+  if (service != null) {
+   service.cancel();
+   service.shutdown();
+   service = null;
+  }
+  if (recognizer != null) {
+   recognizer.close();
+   recognizer = null;
+  }
+ }
+
+ void destroy() {
+  if (destroyed) return;
+  destroyed = true;
+  generation++;
+  loader.execute(() -> {
+   releaseRecording();
+   if (model != null) { model.close(); model = null; }
+  });
+  loader.shutdown();
+ }
 }

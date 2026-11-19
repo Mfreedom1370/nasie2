@@ -19,6 +19,7 @@
   connectDrive(){bridge.connectDrive()},
   retryCloudBackup(){bridge.retryCloudBackup()},
   appIdentity(){try{return JSON.parse(bridge.appIdentity())}catch(e){return {}}},
+  ...(typeof bridge.commitLedger==='function'?{commitLedger:(expected,next,keepPrevious)=>call('commitLedger',expected,next,keepPrevious)}:{}),
   lastModelStatus:'',
   downloadOfflineModel(){bridge.downloadOfflineModel()},
   modelStatus(message){

@@ -9,6 +9,11 @@ const context=vm.createContext({TextEncoder,Uint8Array,btoa:s=>Buffer.from(s,'bi
  NasieNative:{
   get:key=>reply(true,disk.get(key)??null),
   put:(key,value)=>{if(fail)return reply(false);disk.set(key,value);return reply(true)},
+  commitLedger:(expected,next,keepPrevious)=>{
+   if(fail||(disk.get('nasie')??null)!==expected)return reply(false);
+   if(keepPrevious&&expected!==null)disk.set('nasie_last_good',expected);
+   disk.set('nasie',next);return reply(true);
+  },
   remove:key=>{disk.delete(key);return reply(true)},
   exportFile:(...args)=>{exportedFiles.push(args);return reply(true)},
   downloadOfflineModel:()=>speechCalls.push(['model']),
@@ -17,7 +22,9 @@ const context=vm.createContext({TextEncoder,Uint8Array,btoa:s=>Buffer.from(s,'bi
 vm.runInContext('window=globalThis;',context);
 vm.runInContext(read('js/android.js')+read('js/store.js')+read('js/safety.js')+'\nStore.load();',context);
 const store=vm.runInContext('Store',context),native=context.NasieAndroid;
-const c=store.addC('آزمایش اندروید');store.addTransaction({customerId:c.id,amount:125000});
+const c=store.addC('آزمایش اندروید'),initial=disk.get('nasie');
+store.addTransaction({customerId:c.id,amount:125000});
+assert.equal(disk.get('nasie_last_good'),initial);
 const raw=disk.get('nasie');fail=true;
 assert.throws(()=>store.addTransaction({customerId:c.id,amount:5000}),e=>e.storeError);
 assert.equal(store.bal(c.id),125000);assert.equal(disk.get('nasie'),raw);fail=false;
