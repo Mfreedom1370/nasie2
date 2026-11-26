@@ -1,4 +1,4 @@
-// nasie-release:30
+// nasie-release:31
 Store.load();
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
@@ -8,9 +8,6 @@ const fmt=n=>Math.abs(Math.round(n)).toLocaleString('fa-IR'),dt=ts=>new Date(ts)
 const lim=c=>c.limit||Store.d.set.limit,dys=c=>c.days||Store.d.set.days,find=id=>Store.d.customers.find(x=>x.id===id);
 let tab='dash',pending=null,qv='',ld=new Date().setHours(0,0,0,0),entryDay=null;
 function entryTime(){if(entryDay===null)return Date.now();const now=new Date(),date=new Date(entryDay);date.setHours(now.getHours(),now.getMinutes(),now.getSeconds(),now.getMilliseconds());return date.getTime()}
-function resetEntryDay(){entryDay=null;ld=new Date().setHours(0,0,0,0);if(typeof logMonth!=='undefined')logMonth=null;if(typeof cmd!=='undefined'&&cmd?.open){cmd.entryDate=null;const label=$('#entry-confirm-date');if(label)label.textContent='تاریخ ثبت: '+dt(Date.now())}}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')resetEntryDay()});
-
 const an=c=>Ledger.analyze(c.id),age=c=>an(c).daysSinceOldestDebt||0;
 const TYPE={credit:'نسیه',payment:'پرداخت',adjustment:'تعدیل'},SRC={manual:'✍️ دستی',voice:'🎤 صوتی',barcode:'📦 بارکد',import:'📥 انتقالی'};
 function dueLbl(c){const a=an(c);if(a.overdueDays>0)return[`${fmt(a.overdueDays)} روز دیرکرد`,'warn'];if(a.todayDue)return['امروز سررسید','warn'];if(a.nextDue)return[`سررسید ${fmt(a.nextDue.daysLeft)} روز دیگر`,''];return['','']}
@@ -24,7 +21,7 @@ function sheet(h){hideCmdSuggestions();if(cmd)cmd.open=false;$('#sheet').innerHT
 function dismiss(){if(cmd&&cmd.open)cancelCmd();else closeSheet()}
 function closeSheet(refresh=true){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;if(refresh)render()}
 function openLocalHesabdar(){dismiss();HesabdarLocal.reset();tab='hesabdar';render()}
-function render(){if(tab==='dash')resetEntryDay();document.body.dataset.tab=tab;
+function render(){document.body.dataset.tab=tab;
  const storageMessage=Store.blocked||(!Store.writeAllowed?(Store.guardMessage||'ثبت فعلاً متوقف است'):Store.backupWarning);
  $('#storage-status').innerHTML=storageMessage?`<div class="bk">${esc(storageMessage)} <button onclick="tab='set';render()">بکاپ و بازیابی</button>${!Store.writeAllowed&&Store.acquireWriter?'<button onclick="Store.acquireWriter()">فعال‌کردن ثبت</button>':''}</div>`:'';
 $('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b>${fmt(Ledger.total())}</b><span class="tl">تومان</span>`;
@@ -132,7 +129,11 @@ function manual(id,sg,button){if(manualPending)return;const a=Number(norm($('#ma
  const save=()=>{
   try {
    Store.addTransaction(transaction);
-   if(!button||box?.isConnected&&!$('#sheet').hidden)profile(id,box);
+   if(sg>0){
+    if(!button||box?.isConnected&&!$('#sheet').hidden){
+     if(LL){render();listBy(LL)}else closeSheet();
+    }else render();
+   }else if(!button||box?.isConnected&&!$('#sheet').hidden)profile(id,box);
    if(button)toast(sg>0?'نسیه ثبت شد':'پرداخت ثبت شد');
   } finally {
    manualPending=false;
@@ -166,7 +167,7 @@ function logJalali(ts=ld){const d=new Date(ts);return J.g2j(d.getFullYear(),d.ge
 function queueLogRender(){if(logFrame!==null)return;logFrame=requestAnimationFrame(()=>{logFrame=null;if(tab==='log')$('#view').innerHTML=vLog()})}
 function selectLogDay(ts){const value=localDay(ts);if(!Number.isFinite(value))return toast('تاریخ معتبر نیست');
  const y=logJalali(value)[0];if(y<1200||y>1600)return toast('سال باید بین ۱۲۰۰ و ۱۶۰۰ باشد');
- ld=value;entryDay=value;logMonth=null;logPage=0;queueLogRender()}
+ ld=value;entryDay=value===localDay(Date.now())?null:value;logMonth=null;logPage=0;queueLogRender()}
 function shiftLogDay(step){const d=new Date(ld);d.setDate(d.getDate()+step);selectLogDay(d.getTime())}
 function changeLogMonth(year,month){const num=s=>Number(String(s).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
  const y=num(year),m=num(month);if(!Number.isInteger(y)||y<1200||y>1600||!Number.isInteger(m)||m<1||m>12){toast('سال یا ماه معتبر نیست');queueLogRender();return}

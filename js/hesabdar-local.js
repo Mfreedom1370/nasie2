@@ -1,4 +1,4 @@
-// nasie-release:30
+// nasie-release:31
 const HesabdarLocal=(()=>{
  const empty=()=>({products:{},details:{},history:[]});
  const state=()=>Store.d.hesabdarOffline??empty();

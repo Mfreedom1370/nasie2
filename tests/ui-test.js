@@ -73,7 +73,8 @@ assert.equal(execute('Store.bal(customer.id)'),0,'button feedback comes before s
 assert.equal(pressed.busy,true);
 flushFrames();timers.at(-1)();
 assert.equal(execute('Store.bal(customer.id)'),10000,'rapid double tap records only one entry');
-assert.equal(profileBox.scrollTop,115);
+assert.equal(query('#sheet').hidden,true,'saving credit closes the customer profile');
+assert.equal(execute('tab'),'dash');
 assert.equal(pressed.busy,false);
 execute('profile(customer.id)');assert.ok(query('#sheet').innerHTML.includes('ph customer-header'));
 execute('editForm(customer.id)');assert.ok(query('#sheet').innerHTML.includes('customer-header'));
@@ -102,7 +103,16 @@ assert.ok(temporaryMarkup.indexOf('موقت زیاد')<temporaryMarkup.indexOf('
 assert.ok(temporaryMarkup.indexOf('موقت کم')<temporaryMarkup.indexOf('موقت نمونه'));
 assert.ok(temporaryMarkup.indexOf('موقت نمونه')<temporaryMarkup.indexOf('موقت بستانکار'),'credit follows zero balances');
 execute("tab='log';const earlier=new Date();earlier.setDate(earlier.getDate()-2);selectLogDay(earlier.getTime())");flushFrames();
-const chosenDay=execute('ld');query('#ma').value='12,000';query('#md').value='';execute('manual(customer.id,1)');
+const chosenDay=execute('ld');
+execute("tab='list';render();tab='dash';render();tab='log';render();profile(customer.id)");
+assert.equal(execute('entryDay'),chosenDay);
+assert.equal(query('#sheet').hidden,false);
+query('#ma').value='12,000';query('#md').value='';execute('manual(customer.id,1,pressed);');
+flushFrames();timers.at(-1)();
+assert.equal(query('#sheet').hidden,true);
+assert.equal(execute('tab'),'log');
+assert.ok(query('#view').innerHTML.includes('۱۲٬۰۰۰'),'new credit is visible in the same daily report');
+
 assert.equal(execute('localDay(Store.d.tx.at(-1).date)'),chosenDay);
 assert.equal(execute('localDay(Store.d.log.at(-1).entryDate)'),chosenDay);
 assert.notEqual(execute('localDay(Store.d.log.at(-1).ts)'),chosenDay,'audit timestamp stays real');
@@ -110,6 +120,11 @@ execute("run('آزمایشی 25000 تومان پرداخت',{source:'voice',cust
 query('input[name=cs]:checked').value='0';query('input[name=ty]:checked').value='payment';query('#voice-amount').value='25,000';query('#dd').value='';execute('okCmd()');
 assert.equal(execute('localDay(Store.d.tx.at(-1).date)'),chosenDay,'voice uses selected calendar date');
 execute("tab='dash';render();tab='log';render()");
+assert.equal(execute('entryDay'),chosenDay);
+document.visibilityState='hidden';listeners.visibilitychange();
+document.visibilityState='visible';listeners.visibilitychange();
+assert.equal(execute('entryDay'),chosenDay,'switching to another app preserves the selected day');
+execute('selectLogDay(Date.now())');flushFrames();
 assert.equal(execute('entryDay'),null);assert.equal(execute('localDay(ld)'),execute('localDay(Date.now())'));
 assert.doesNotMatch(query('#view').innerHTML,/entry-date-notice/);
 const before=storage.getItem('nasie');

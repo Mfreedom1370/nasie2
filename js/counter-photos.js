@@ -1,4 +1,4 @@
-// nasie-release:30
+// nasie-release:31
 const CounterPhotos=(()=>{
  const bridge=()=>window.NasieAndroid?.counter;
  const book=()=>Store.d.counterPhotos??{pending:{},linked:{}};
