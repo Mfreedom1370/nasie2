@@ -4,6 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.ClipData;
+import androidx.core.content.FileProvider;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.net.ConnectivityManager;
@@ -36,7 +38,10 @@ import java.util.ArrayList;
 public final class MainActivity extends Activity {
  private static final int PICK_FILE=40, SAVE_FILE=41, MIC_PERMISSION=42, SYSTEM_SPEECH=43;
  private static final String HOME="https://appassets.androidplatform.net/assets/www/index.html";
+ private static final String OPEN_HESABDAR="ir.nasie.offline.OPEN_HESABDAR";
+ private boolean pageReady=false;
  private WebView web;
+ private CounterCamera counterCamera;
  private AtomicFile ledgerFile;
  private JSONObject storageState;
  private ValueCallback<Uri[]> fileCallback;
@@ -66,6 +71,7 @@ public final class MainActivity extends Activity {
   }catch(Exception e){storageFailed=true;storageState=new JSONObject();}
   web=new WebView(this);
   FrameLayout frame=new FrameLayout(this);frame.setBackgroundColor(0xff07151f);frame.addView(web);setContentView(frame);
+  counterCamera=new CounterCamera(this,frame);
   frame.setOnApplyWindowInsetsListener((view,insets)->{
    view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),
     insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
@@ -81,6 +87,11 @@ public final class MainActivity extends Activity {
   WebViewAssetLoader loader=new WebViewAssetLoader.Builder()
    .addPathHandler("/assets/",new WebViewAssetLoader.AssetsPathHandler(this)).build();
   web.setWebViewClient(new WebViewClient(){
+   @Override public void onPageFinished(WebView view,String url){
+    if(!HOME.equals(url))return;
+    pageReady=true;
+    showRequestedView();
+   }
    @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
     if("appassets.androidplatform.net".equals(request.getUrl().getHost())) {
      WebResourceResponse result=loader.shouldInterceptRequest(request.getUrl());
@@ -113,12 +124,28 @@ public final class MainActivity extends Activity {
   if(!storageFailed&&storageState.has("nasie")){final String raw=storageState.optString("nasie");backupExecutor.execute(()->BackupEngine.record(getApplicationContext(),raw));}
   web.loadUrl(HOME);
  }
+ @Override protected void onNewIntent(Intent intent){
+  super.onNewIntent(intent);
+  setIntent(intent);
+  showRequestedView();
+ }
+ private void showRequestedView(){
+  if(pageReady&&web!=null&&OPEN_HESABDAR.equals(getIntent().getAction())){
+   web.evaluateJavascript("openLocalHesabdar()",null);
+   setIntent(new Intent(this,MainActivity.class));
+  }
+ }
  private String reply(boolean ok,Object value){
   try{return new JSONObject().put("ok",ok).put(ok?"value":"error",value==null?JSONObject.NULL:value).toString();}
   catch(Exception e){return "{\"ok\":false,\"error\":\"Storage unavailable\"}";}
  }
  private boolean validKey(String key){return key!=null&&key.matches("nasie(?:_[a-zA-Z0-9_]+)?");}
- private boolean commitState(JSONObject next){synchronized(BackupEngine.LOCK){
+ private JSONObject copyStorage() throws org.json.JSONException {
+  JSONObject copy=new JSONObject();java.util.Iterator<String> keys=storageState.keys();
+  while(keys.hasNext()){String key=keys.next();copy.put(key,storageState.get(key));}
+  return copy;
+ }
+ private boolean commitState(JSONObject next){synchronized(BackupEngine.LEDGER_LOCK){
   FileOutputStream out=null;
   try{
    byte[] bytes=next.toString().getBytes(StandardCharsets.UTF_8);
@@ -136,9 +163,23 @@ public final class MainActivity extends Activity {
   }).addOnFailureListener(error->cloudMessage("اتصال گوگل انجام نشد؛ تنظیم OAuth و امضای APK را بررسی کن"));
  }
  public final class NativeBridge {
+  @JavascriptInterface public String counterConfig(){
+   try{return reply(true,counterCamera.settings());}catch(Exception e){return reply(false,"تنظیمات دوربین در دسترس نیست.");}
+  }
+  @JavascriptInterface public String configureCounter(String host,String user,String password,int port,int stream){
+   try{counterCamera.configure(host,user,password,port,stream);return reply(true,null);}
+   catch(Exception e){return reply(false,e.getMessage());}
+  }
+  @JavascriptInterface public String counterPhoto(String id,boolean temporary){
+   try{return reply(true,counterCamera.photo(id,temporary));}catch(Exception e){return reply(false,"این عکس در حافظهٔ گوشی موجود نیست.");}
+  }
+  @JavascriptInterface public void captureCounter(int request){
+   runOnUiThread(()->counterCamera.capture((id,error)->web.evaluateJavascript(
+    "CounterPhotos.result("+request+","+JSONObject.quote(id==null?"":id)+","+JSONObject.quote(error==null?"":error)+")",null)));
+  }
   @JavascriptInterface public String cloudStatus(){return BackupEngine.summary(MainActivity.this);}
   @JavascriptInterface public void connectDrive(){runOnUiThread(()->MainActivity.this.connectDrive());}
-  @JavascriptInterface public void retryCloudBackup(){backupExecutor.execute(()->{try{BackupEngine.prepare(MainActivity.this,true);BackupEngine.sendSoon(MainActivity.this);}catch(Exception e){BackupEngine.status(MainActivity.this,"بکاپ آماده نشد؛ تنظیمات را بررسی کن");}});}
+  @JavascriptInterface public void retryCloudBackup(){backupExecutor.execute(()->{try{BackupEngine.prepare(MainActivity.this);BackupEngine.sendSoon(MainActivity.this);}catch(Exception e){BackupEngine.status(MainActivity.this,"بکاپ آماده نشد؛ تنظیمات را بررسی کن");}});}
   @JavascriptInterface public String appIdentity(){try{
    android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(getPackageName(),android.content.pm.PackageManager.GET_SIGNATURES);
    byte[] digest=java.security.MessageDigest.getInstance("SHA-1").digest(info.signatures[0].toByteArray());StringBuilder sha=new StringBuilder();for(byte b:digest){if(sha.length()>0)sha.append(":");sha.append(String.format(java.util.Locale.US,"%02X",b&255));}
@@ -155,7 +196,7 @@ public final class MainActivity extends Activity {
    try{
     String current=storageState.has("nasie")?storageState.getString("nasie"):null;
     if(!java.util.Objects.equals(expected,current))return reply(false,"Ledger changed");
-    JSONObject next=new JSONObject(storageState.toString()).put("nasie",value);
+    JSONObject next=copyStorage().put("nasie",value);
     if(keepPrevious&&current!=null)next.put("nasie_last_good",current);
     if(!commitState(next))return reply(false,"Storage write failed");
     final String snapshotDay=BackupEngine.day();
@@ -167,12 +208,38 @@ public final class MainActivity extends Activity {
   @JavascriptInterface public synchronized String put(String key,String value){
    if(storageFailed)return reply(false,"Storage write stopped");
    if(!validKey(key))return reply(false,"Invalid storage key");
-   try{boolean saved=commitState(new JSONObject(storageState.toString()).put(key,value));if(saved&&"nasie".equals(key)){final String snapshotDay=BackupEngine.day();backupExecutor.execute(()->BackupEngine.record(getApplicationContext(),value,snapshotDay));}return reply(saved,null);}catch(Exception e){storageFailed=true;return reply(false,"Storage write failed");}
+   try{boolean saved=commitState(copyStorage().put(key,value));if(saved&&"nasie".equals(key)){final String snapshotDay=BackupEngine.day();backupExecutor.execute(()->BackupEngine.record(getApplicationContext(),value,snapshotDay));}return reply(saved,null);}catch(Exception e){storageFailed=true;return reply(false,"Storage write failed");}
   }
   @JavascriptInterface public synchronized String remove(String key){
    if(storageFailed)return reply(false,"Storage write stopped");
    if(!validKey(key))return reply(false,"Invalid storage key");
-   try{JSONObject next=new JSONObject(storageState.toString());next.remove(key);return reply(commitState(next),null);}catch(Exception e){storageFailed=true;return reply(false,"Storage write failed");}
+   try{JSONObject next=copyStorage();next.remove(key);return reply(commitState(next),null);}catch(Exception e){storageFailed=true;return reply(false,"Storage write failed");}
+  }
+  @JavascriptInterface public String sharePdf(String data,String name){
+   if(name==null||!name.matches("nasie-[a-zA-Z0-9_-]{1,100}-[0-9]{4}-[0-9]{2}-[0-9]{2}(?:-current)?\\.pdf")||data==null||data.length()>36_000_000)
+    return reply(false,"فایل PDF برای اشتراک معتبر نیست");
+   try{
+    byte[] bytes=Base64.decode(data,Base64.DEFAULT);
+    if(bytes.length<8||!new String(bytes,0,5,StandardCharsets.US_ASCII).equals("%PDF-"))
+     return reply(false,"فایل PDF برای اشتراک معتبر نیست");
+    File directory=new File(getCacheDir(),"invoice-share");
+    if(!directory.isDirectory()&&!directory.mkdirs())throw new java.io.IOException();
+    File[] old=directory.listFiles(f->f.isFile()&&f.lastModified()<System.currentTimeMillis()-7L*24*60*60*1000);
+    if(old!=null)for(File previous:old)previous.delete();
+    File file=new File(directory,name);
+    AtomicFile destination=new AtomicFile(file);
+    FileOutputStream out=destination.startWrite();
+    try{out.write(bytes);destination.finishWrite(out);}catch(Exception e){destination.failWrite(out);throw e;}
+    Uri uri=FileProvider.getUriForFile(MainActivity.this,getPackageName()+".invoice-files",file);
+    runOnUiThread(()->{
+     Intent intent=new Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM,uri);
+     intent.setClipData(ClipData.newRawUri("PDF",uri));
+     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+     try{startActivity(Intent.createChooser(intent,"اشتراک صورتحساب"));}
+     catch(Exception e){web.evaluateJavascript("toast('برنامه‌ای برای اشتراک PDF پیدا نشد')",null);}
+    });
+    return reply(true,null);
+   }catch(Exception e){return reply(false,"آماده‌سازی PDF برای اشتراک ناموفق بود");}
   }
   @JavascriptInterface public String exportFile(String data,String name,String mime){
    synchronized(MainActivity.this){
@@ -403,7 +470,8 @@ public final class MainActivity extends Activity {
  @Override protected void onResume(){
   super.onResume();if(web!=null){web.onResume();web.evaluateJavascript("if(typeof Store!=='undefined'&&Store.acquireWriter)Store.acquireWriter()",null);}
  }
- @Override protected void onDestroy(){closeModelSpeech();endSpeech("aborted");if(localSpeech!=null)localSpeech.destroy();backupExecutor.shutdown();if(fileCallback!=null)fileCallback.onReceiveValue(null);web.removeJavascriptInterface("NasieNative");web.destroy();super.onDestroy();}
+ @Override protected void onStop(){super.onStop();counterCamera.cancel();}
+ @Override protected void onDestroy(){counterCamera.cancel();closeModelSpeech();endSpeech("aborted");if(localSpeech!=null)localSpeech.destroy();backupExecutor.shutdown();if(fileCallback!=null)fileCallback.onReceiveValue(null);web.removeJavascriptInterface("NasieNative");web.destroy();super.onDestroy();}
  @Override public void onBackPressed(){
   web.evaluateJavascript("(()=>{if(typeof dismiss==='function'&&!document.querySelector('#sheet').hidden){dismiss();return false}return true})()",result->{
    if("true".equals(result))new AlertDialog.Builder(this).setMessage("برنامه بسته شود؟")

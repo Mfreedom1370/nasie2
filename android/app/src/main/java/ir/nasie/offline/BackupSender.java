@@ -18,7 +18,16 @@ public final class BackupSender extends Worker {
    try{job=BackupEngine.read(file);if(!BackupEngine.hash(job.getString("raw")).equals(job.getString("hash")))throw new Exception("snapshot checksum");}
    catch(Exception e){retry=true;BackupEngine.status(c,"یک نسخهٔ صف آسیب دیده؛ حفظ شد و ارسال سایر نسخه‌ها ادامه می‌یابد");continue;}
    if(!job.optBoolean("telegram")&&!job.optBoolean("drive")){retry=true;continue;}
-   if(job.optBoolean("telegram")&&!job.optBoolean("telegramDone"))try{if(!settings.optBoolean("backupTelegram",true))throw new Exception();delivery.telegram(job,settings);job.put("telegramDone",true);BackupEngine.write(file,job);BackupEngine.prefs(c).edit().putString("lastTelegram",BackupEngine.day()).apply();}catch(Exception e){retry=true;BackupEngine.status(c,"تلگرام ارسال نشد؛ نسخه در صف است. اتصال و توکن را بررسی کن");}
+   if(job.optBoolean("telegram")&&!job.optBoolean("telegramDone"))try{if(!settings.optBoolean("backupTelegram",true))throw new Exception();String date=job.optString("day");
+    boolean daily=date.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}");
+    android.content.SharedPreferences status=BackupEngine.prefs(c);
+    if(!daily||!status.getBoolean("telegramSent_"+date,false)){
+     delivery.telegram(job,settings);
+     android.content.SharedPreferences.Editor result=status.edit().putString("lastTelegram",BackupEngine.day());
+     if(daily)result.putBoolean("telegramSent_"+date,true);
+     if(!result.commit())throw new Exception("backup receipt");
+    }
+    job.put("telegramDone",true);BackupEngine.write(file,job);}catch(Exception e){retry=true;BackupEngine.status(c,"تلگرام ارسال نشد؛ نسخه در صف است. اتصال و توکن را بررسی کن");}
    if(job.optBoolean("drive")&&!job.optBoolean("driveDone"))try{if(!settings.optBoolean("backupDrive",true))throw new Exception();delivery.drive(c,job);job.put("driveDone",true);BackupEngine.write(file,job);BackupEngine.prefs(c).edit().putString("lastDrive",BackupEngine.day()).apply();}catch(Exception e){retry=true;BackupEngine.status(c,"درایو ارسال نشد؛ نسخه در صف است. اتصال و مجوز گوگل را بررسی کن");}
    if((!job.optBoolean("telegram")||job.optBoolean("telegramDone"))&&(!job.optBoolean("drive")||job.optBoolean("driveDone")))new android.util.AtomicFile(file).delete();
   }

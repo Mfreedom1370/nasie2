@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Separate durable outbox: workers never write or restore accounting data. */
 final class BackupEngine {
- static final Object LOCK=new Object();
+ static final Object LOCK=new Object(), LEDGER_LOCK=new Object();
  static final String DRIVE_SCOPE="https://www.googleapis.com/auth/drive.file";
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("cloud-backup",Context.MODE_PRIVATE);}
  static String day(){return new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date());}
@@ -30,41 +30,77 @@ final class BackupEngine {
   catch(Exception e){if(out!=null)file.failWrite(out);throw e;}
  }}
  static JSONObject ledger(Context c)throws Exception {
-  synchronized(LOCK){String raw=read(new File(c.getFilesDir(),"ledger-state.json")).getString("nasie");JSONObject data=new JSONObject(raw);
+  synchronized(LEDGER_LOCK){AtomicFile file=new AtomicFile(new File(c.getFilesDir(),"ledger-state.json"));
+   String raw=new JSONObject(new String(file.readFully(),StandardCharsets.UTF_8)).getString("nasie");JSONObject data=new JSONObject(raw);
    if(data.getInt("schema")!=2||data.optJSONArray("customers")==null||data.optJSONArray("tx")==null||data.optJSONObject("set")==null)throw new IOException("invalid ledger");return data;}
  }
  static String hash(String raw)throws Exception {byte[] bytes=MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(Locale.US,"%02x",b&255));return out.toString();}
  static void status(Context c,String message){prefs(c).edit().putString("status",message).apply();}
+ static final int NIGHT_HOUR=22;
+ static final String CLOCK_WORK="nasie-nightly-backup";
+ static long delayToNight(Calendar now){
+  Calendar next=(Calendar)now.clone();
+  next.set(Calendar.HOUR_OF_DAY,NIGHT_HOUR);
+  next.set(Calendar.MINUTE,0);
+  next.set(Calendar.SECOND,0);
+  next.set(Calendar.MILLISECOND,0);
+  if(next.before(now))next.add(Calendar.DATE,1);
+  return next.getTimeInMillis()-now.getTimeInMillis();
+ }
  static void schedule(Context c){
   WorkManager wm=WorkManager.getInstance(c);
-  wm.enqueueUniquePeriodicWork("nasie-backup-clock",ExistingPeriodicWorkPolicy.KEEP,new PeriodicWorkRequest.Builder(BackupClock.class,1,TimeUnit.HOURS).build());
+  wm.cancelUniqueWork("nasie-backup-clock");
+  wm.enqueueUniquePeriodicWork(CLOCK_WORK,ExistingPeriodicWorkPolicy.KEEP,
+   new PeriodicWorkRequest.Builder(BackupClock.class,24,TimeUnit.HOURS)
+    .setInitialDelay(delayToNight(Calendar.getInstance()),TimeUnit.MILLISECONDS).build());
+ }
+ static void cancelSchedule(Context c){
+  WorkManager wm=WorkManager.getInstance(c);
+  wm.cancelUniqueWork("nasie-backup-clock");
+  wm.cancelUniqueWork(CLOCK_WORK);
+ }
+ static String stageDay(String snapshotDay,String queuedThrough){
+  if(snapshotDay.compareTo(queuedThrough)>0)return snapshotDay;
+  return java.time.LocalDate.parse(queuedThrough).plusDays(1).toString();
  }
  static void sendSoon(Context c){WorkManager.getInstance(c).enqueueUniqueWork("nasie-backup-send",ExistingWorkPolicy.KEEP,
   new OneTimeWorkRequest.Builder(BackupSender.class).setConstraints(new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS).build());}
  static void record(Context c,String raw){long modified=new File(c.getFilesDir(),"ledger-state.json").lastModified();record(c,raw,new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date(modified>0?modified:System.currentTimeMillis())));}
  static void record(Context c,String raw,String snapshotDay){
   try{JSONObject data=new JSONObject(raw),s=data.getJSONObject("set");
-   if(!s.optBoolean("autoBackup")){WorkManager.getInstance(c).cancelUniqueWork("nasie-backup-clock");return;}
+   if(!s.optBoolean("autoBackup")){cancelSchedule(c);return;}
    synchronized(LOCK){String fingerprint=hash(raw);if(!fingerprint.equals(prefs(c).getString("recorded",""))){
-    write(new File(dir(c),snapshotDay+".stage"),new JSONObject().put("raw",raw).put("hash",fingerprint).put("day",snapshotDay).put("savedAt",System.currentTimeMillis()));
+    String backupDay=stageDay(snapshotDay,prefs(c).getString("queuedThrough",""));
+    write(new File(dir(c),backupDay+".stage"),new JSONObject().put("raw",raw).put("hash",fingerprint).put("day",backupDay));
     if(!prefs(c).edit().putString("recorded",fingerprint).commit())throw new IOException("backup metadata");
-   }}schedule(c);sendSoon(c);
+   }}schedule(c);prepare(c);sendSoon(c);
   }catch(Exception e){status(c,"آماده‌سازی بکاپ انجام نشد؛ حافظه و تنظیمات را بررسی کن");}
  }
- static boolean due(String snapshotDay,String today,int hour,int cutoff,boolean force){return force||snapshotDay.compareTo(today)<0||(snapshotDay.equals(today)&&hour>=cutoff);}
- static void prepare(Context c,boolean force)throws Exception {
+ static boolean due(String snapshotDay,String today,int hour){
+  return snapshotDay.compareTo(today)<0||(snapshotDay.equals(today)&&hour>=NIGHT_HOUR);
+ }
+ static void prepare(Context c)throws Exception {
   synchronized(LOCK){JSONObject set=ledger(c).getJSONObject("set");if(!set.optBoolean("autoBackup"))return;
    if(!set.optBoolean("backupTelegram",true)&&!set.optBoolean("backupDrive",true)){status(c,"حداقل یک مقصد بکاپ باید فعال باشد");return;}
-   int hour=Calendar.getInstance().get(Calendar.HOUR_OF_DAY),cutoff=set.optInt("bkHour",22);
+   int hour=Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
    File[] files=dir(c).listFiles((d,n)->n.endsWith(".stage"));if(files==null)return;
-   for(File file:files){JSONObject stage=read(file);if(!due(stage.getString("day"),day(),hour,cutoff,force))continue;
-    if(!force&&stage.getString("day").equals(day())&&System.currentTimeMillis()-stage.optLong("savedAt")<15*60*1000)continue;
-    String revision=stage.getString("hash"),name="nasie-"+stage.getString("day")+"-"+revision.substring(0,12)+".json";
-    File job=new File(dir(c),name+".job");
-    if(!job.exists())write(job,stage.put("name",name).put("telegram",set.optBoolean("backupTelegram",true)).put("drive",set.optBoolean("backupDrive",true)).put("telegramDone",false).put("driveDone",false));
+   Arrays.sort(files);
+   SharedPreferences preferences=prefs(c);
+   boolean queued=false;
+   for(File file:files){
+    JSONObject stage=read(file);
+    String date=stage.getString("day");
+    if(!due(date,day(),hour))continue;
+    if(date.compareTo(preferences.getString("queuedThrough",""))>0){
+     String name="nasie-"+date+".json";
+     File job=new File(dir(c),name+".job");
+     if(!job.exists())write(job,stage.put("name",name).put("telegram",set.optBoolean("backupTelegram",true)).put("drive",set.optBoolean("backupDrive",true)).put("telegramDone",false).put("driveDone",false));
+     if(!preferences.edit().putString("queuedThrough",date).commit())throw new IOException("backup metadata");
+     queued=true;
+    }
     new AtomicFile(file).delete();
    }
-   status(c,"نسخهٔ تغییرات آماده است؛ ارسال‌های ناموفق در صف می‌مانند");sendSoon(c);
+   if(queued)status(c,"بکاپ شبانه آماده شد؛ اگر اینترنت قطع باشد در صف می‌ماند");
   }
  }
  static String summary(Context c){try{int count=0;File[] jobs=dir(c).listFiles((d,n)->n.endsWith(".job"));if(jobs!=null)count=jobs.length;

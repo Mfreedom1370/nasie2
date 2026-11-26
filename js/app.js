@@ -1,97 +1,58 @@
-// nasie-release:23
+// nasie-release:30
 Store.load();
-// Cover every action surface, including customer cards and radio/checkbox labels.
-const buttonAnimations=new WeakMap();
-let pressEcho=null,pressEchoAnimation=null;
-function showPressEcho(rect,reduced){
- if(!rect.width||!rect.height)return;
- if(!pressEcho){pressEcho=document.createElement('span');pressEcho.className='press-echo';pressEcho.setAttribute('aria-hidden','true');document.body.appendChild(pressEcho)}
- pressEchoAnimation?.cancel();pressEcho.hidden=false;
- Object.assign(pressEcho.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
- const animation=pressEcho.animate(reduced?[{opacity:.7},{opacity:0}]:[{opacity:.7,transform:'scale(.97)'},{opacity:0,transform:'scale(1.02)'}],{duration:240,easing:'ease-out'});
- pressEchoAnimation=animation;
- animation.onfinish=()=>{if(pressEchoAnimation===animation){pressEcho.hidden=true;pressEchoAnimation=null}};
-}
-function buttonFeedback(event){
- if(event.type==='pointerdown'&&(event.button!==0||event.isPrimary===false))return;
- const button=event.target?.closest?.('button,[role="button"],[onclick],label.opt,.seg label,summary,a[href]');
- if(!button||button.matches(':disabled,[aria-disabled="true"]')||button.querySelector('input:disabled')||typeof button.animate!=='function')return;
- const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
- buttonAnimations.get(button)?.cancel();
- const frames=reduced?[{filter:'brightness(1.35)'},{filter:'brightness(1)'}]:
-  [{transform:'scale(.96)',filter:'brightness(1.35)'},{transform:'scale(1)',filter:'brightness(1)'}];
- const animation=button.animate(frames,{duration:reduced?120:240,easing:'ease-out'});
- buttonAnimations.set(button,animation);
- animation.onfinish=()=>{if(buttonAnimations.get(button)===animation)buttonAnimations.delete(button)};
- // Keep a brief visual acknowledgement when an action immediately rebuilds its sheet.
- if(event.type==='click'){
-  const rect=button.getBoundingClientRect(),sheetAtPress=document.querySelector('#sheet .sh');
-  queueMicrotask(()=>{if(!button.isConnected||document.querySelector('#sheet .sh')!==sheetAtPress)showPressEcho(rect,reduced)});
- }
-}
-document.addEventListener('pointerdown',buttonFeedback,true);
-document.addEventListener('click',buttonFeedback,true);
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
 
 const $=s=>document.querySelector(s),esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;')};
 const fmt=n=>Math.abs(Math.round(n)).toLocaleString('fa-IR'),dt=ts=>new Date(ts).toLocaleDateString('fa-IR'),tm=ts=>new Date(ts).toLocaleTimeString('fa-IR',{hour:'2-digit',minute:'2-digit'});
 const lim=c=>c.limit||Store.d.set.limit,dys=c=>c.days||Store.d.set.days,find=id=>Store.d.customers.find(x=>x.id===id);
-let tab='dash',pending=null,qv='',ld=new Date().setHours(0,0,0,0),entryDay=null,settingsEditing=false;
+let tab='dash',pending=null,qv='',ld=new Date().setHours(0,0,0,0),entryDay=null;
 function entryTime(){if(entryDay===null)return Date.now();const now=new Date(),date=new Date(entryDay);date.setHours(now.getHours(),now.getMinutes(),now.getSeconds(),now.getMilliseconds());return date.getTime()}
 function resetEntryDay(){entryDay=null;ld=new Date().setHours(0,0,0,0);if(typeof logMonth!=='undefined')logMonth=null;if(typeof cmd!=='undefined'&&cmd?.open){cmd.entryDate=null;const label=$('#entry-confirm-date');if(label)label.textContent='تاریخ ثبت: '+dt(Date.now())}}
-function entryDateNotice(){return entryDay===null?'':`<div class="bk entry-date-notice">ثبت نسیه و پرداخت در ${dt(entryDay)} <button onclick="resetEntryDay();render()">بازگشت به امروز</button></div>`}
-function toggleSettingsEdit(){settingsEditing=!settingsEditing;render()}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){resetEntryDay();settingsEditing=false}else if(tab==='set')render()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')resetEntryDay()});
 
 const an=c=>Ledger.analyze(c.id),age=c=>an(c).daysSinceOldestDebt||0;
 const TYPE={credit:'نسیه',payment:'پرداخت',adjustment:'تعدیل'},SRC={manual:'✍️ دستی',voice:'🎤 صوتی',barcode:'📦 بارکد',import:'📥 انتقالی'};
 function dueLbl(c){const a=an(c);if(a.overdueDays>0)return[`${fmt(a.overdueDays)} روز دیرکرد`,'warn'];if(a.todayDue)return['امروز سررسید','warn'];if(a.nextDue)return[`سررسید ${fmt(a.nextDue.daysLeft)} روز دیگر`,''];return['','']}
 const dsLbl=d=>d.state==='overdue'?`${fmt(d.overdueDays)} روز دیرکرد`:d.state==='today'?'امروز سررسید':d.state==='notdue'?`${fmt(d.daysLeft)} روز تا سررسید`:'بدون سررسید';
 const st=(c,b)=>b<=0?'ok':b>lim(c)?'bad':an(c).overdue.length?'warn':'';
-const sumTx=(id,f)=>Store.live().filter(t=>t.cid===id&&f(t)).reduce((a,t)=>a+Math.abs(t.amt),0);
+const sumTx=(id,f)=>Ledger.entries(id).reduce((sum,t)=>sum+(f(t)?Math.abs(t.amt):0),0);
 const LT={'c+':e=>`➕ مشتری جدید: ${e.n}`,'c~':e=>`✏️ ویرایش پروفایل: ${e.n}`,'c-':e=>`🗑 حذف مشتری: ${e.n}`,tx:e=>`${e.a>0?'🔴 نسیه':'🟢 پرداخت'} ${fmt(e.a)} — ${e.n}`,'tx-':e=>`🗑 حذف ثبت ${fmt(e.a)} — ${e.n}`,rs:e=>`♻️ بازیابی: ${e.n}`};
 const logText=e=>(LT[e.t]||(()=>e.t))(e);
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3000)}
 function sheet(h){hideCmdSuggestions();if(cmd)cmd.open=false;$('#sheet').innerHTML=`<div class="sh"><div class="xrow"><button class="x" onclick="dismiss()" aria-label="بستن">✕</button></div><div class="box">${h}</div></div>`;$('#sheet').hidden=false}
 function dismiss(){if(cmd&&cmd.open)cancelCmd();else closeSheet()}
 function closeSheet(refresh=true){if(cmd)cmd.open=false;LL=null;$('#sheet').hidden=true;if(refresh)render()}
-let counterFrame=null,counterGeneration=0;
-function anim(){if(counterFrame!==null)cancelAnimationFrame(counterFrame);counterFrame=null;const generation=++counterGeneration;
- const counters=Array.from(document.querySelectorAll('[data-n]'),el=>({el,value:Number(el.dataset.n)||0})),start=performance.now();
- const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
- const frame=now=>{if(generation!==counterGeneration)return;counterFrame=null;
-  const p=reduced||document.visibilityState==='hidden'?1:Math.max(0,Math.min(1,(now-start)/800));
-  for(const {el,value} of counters){if(el.isConnected===false)continue;el.classList.toggle('lg',value>=1e7);el.textContent=fmt(value*(1-(1-p)**3));}
-  if(p<1&&counters.some(x=>x.el.isConnected!==false))counterFrame=requestAnimationFrame(frame);
- };frame(start);
- document.querySelectorAll('main>*').forEach((el,i)=>el.style.setProperty('--i',Math.min(i,12)));document.querySelectorAll('main .kpis').forEach(k=>[...k.children].forEach((el,j)=>el.style.setProperty('--j',j)))}
-function render(){if(tab==='dash')resetEntryDay();if(tab!=='set')settingsEditing=false;document.body.dataset.tab=tab;
+function openLocalHesabdar(){dismiss();HesabdarLocal.reset();tab='hesabdar';render()}
+function render(){if(tab==='dash')resetEntryDay();document.body.dataset.tab=tab;
  const storageMessage=Store.blocked||(!Store.writeAllowed?(Store.guardMessage||'ثبت فعلاً متوقف است'):Store.backupWarning);
  $('#storage-status').innerHTML=storageMessage?`<div class="bk">${esc(storageMessage)} <button onclick="tab='set';render()">بکاپ و بازیابی</button>${!Store.writeAllowed&&Store.acquireWriter?'<button onclick="Store.acquireWriter()">فعال‌کردن ثبت</button>':''}</div>`:'';
-$('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b data-n="${Store.total()}"></b><span class="tl">تومان</span>`;
+$('#total').innerHTML=`<span class="tl">جمع بدهی‌ها</span><b>${fmt(Ledger.total())}</b><span class="tl">تومان</span>`;
  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
- $('#view').innerHTML=({dash:vDash,list:vList,log:vLog,ai:vAI,set:vSet})[tab]();$('#view').insertAdjacentHTML?.('afterbegin',entryDateNotice());document.body.classList.toggle('ai',tab==='ai');anim()}
+ const open=tab==='set'?[...document.querySelectorAll('[data-settings-section][open]')].map(section=>section.dataset.settingsSection):[];
+ $('#view').innerHTML=({dash:vDash,list:vList,log:vLog,ai:vAI,set:vSet,hesabdar:HesabdarLocal.view})[tab]();
+ if(open.length)document.querySelectorAll('[data-settings-section]').forEach(section=>{section.open=open.includes(section.dataset.settingsSection)});
+ document.body.classList.toggle('ai',tab==='ai')}
 // ---------- داشبورد ----------
-function months(){const out=[],today=J.today();
+function months(){const out=[],today=J.today(),live=Store.live();
  for(let i=5;i>=0;i--){let y=today[0],m=today[1]-i;while(m<1){m+=12;y--}
-  const s=J.ts([y,m,1],0),e=J.ts(m===12?[y+1,1,1]:[y,m+1,1],0),t=Store.live().filter(x=>x.ts>=s&&x.ts<e&&x.source!=='import');
-  out.push({l:new Date(s).toLocaleDateString('fa-IR',{month:'short'}),d:t.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0),p:-t.filter(x=>x.amt<0).reduce((a,x)=>a+x.amt,0),net:Store.live().filter(x=>x.ts<e).reduce((a,x)=>a+x.amt,0)})}return out}
+  const s=J.ts([y,m,1],0),e=J.ts(m===12?[y+1,1,1]:[y,m+1,1],0),t=live.filter(x=>x.ts>=s&&x.ts<e&&x.source!=='import');
+  out.push({l:new Date(s).toLocaleDateString('fa-IR',{month:'short'}),d:t.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0),p:-t.filter(x=>x.amt<0).reduce((a,x)=>a+x.amt,0),net:live.filter(x=>x.ts<e).reduce((a,x)=>a+x.amt,0)})}return out}
 function uiIcon(name){
  const paths={home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',people:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M17 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-4',chart:'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',spark:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',settings:'M4 7h16 M4 17h16 M8 4v6 M16 14v6',clock:'M12 8v5l3 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',arrow:'M7 17L17 7 M7 7h10v10',wallet:'M3 6h18v14H3z M3 6V3h15v3 M16 11h5v5h-5z'};
  return '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.chart)+'"/></svg>';
 }
 function vDash(){
- const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),over=db.filter(x=>x.b>lim(x.c));
+ const cs=Store.d.customers.map(c=>({c,b:Ledger.balance(c.id)})),db=cs.filter(x=>x.b>0),over=db.filter(x=>x.b>lim(x.c));
  const late=db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays);
  const gs=cs.filter(x=>x.c.guest).sort((a,b)=>b.b-a.b||a.c.name.localeCompare(b.c.name,'fa')),ms=months(),cur=ms[5],top=[...db].sort((a,b)=>b.b-a.b).slice(0,5),mx=top[0]?.b||1;
- const bk=new Date().getHours()>=Store.d.set.bkHour&&Store.d.set.lastBk!==new Date().toDateString();
+ const bk=new Date().getHours()>=22&&Store.d.set.lastBk!==new Date().toDateString();
  const maximum=Math.max(...ms.flatMap(x=>[x.d,x.p]),1);
  const bars=ms.map((x,i)=>`<rect x="${i*48+8}" y="${95-x.d/maximum*80}" width="16" height="${x.d/maximum*80}" rx="4" fill="var(--bad)"/><rect x="${i*48+26}" y="${95-x.p/maximum*80}" width="16" height="${x.p/maximum*80}" rx="4" fill="var(--ok)"/><text x="${i*48+24}" y="114" text-anchor="middle" font-size="10" fill="var(--mut)">${x.l}</text>`).join('');
  const metric=(label,value,target,icon,tone='')=>`<button class="metric ${tone}" onclick="listBy('${target}')"><span>${uiIcon(icon)}${label}</span><b>${fmt(value)}</b><small>${target==='debtors'?'مشتری':'تومان'}</small></button>`;
  return `<div class="dashboard-layout">
  <section class="dash-story">
- <div class="hero-balance"><small>جمع بدهی‌ها</small><b data-n="${Store.total()}">${fmt(Store.total())}</b><span>تومان</span></div>
+ <div class="hero-balance"><small>جمع بدهی‌ها</small><b>${fmt(Ledger.total())}</b><span>تومان</span></div>
  <section class="temporary-customers glass-panel"><div class="panel-heading"><h3>مشتری‌های موقت</h3><small>${fmt(gs.length)} مشتری</small></div><div class="temporary-list">${gs.map(x=>`<button onclick="profile('${x.c.id}')"><span>${esc(x.c.name)}<small>${x.b>0?(dueLbl(x.c)[0]||'حساب باز'):x.b<0?'بستانکار':'تسویه‌شده'}</small></span><b class="${st(x.c,x.b)}">${x.b<0?'−':''}${fmt(x.b)}<small>تومان</small></b></button>`).join('')||'<small>مشتری موقتی ثبت نشده.</small>'}</div></section>
  <button class="story-action" onclick="tab='list';render()">مشاهدهٔ مشتریان ${uiIcon('arrow')}</button></section>
  <section class="forecast-panel glass-panel"><div class="panel-heading"><div><small>شش ماه اخیر</small><h3>روند ماندهٔ حساب‌ها</h3></div>${uiIcon('chart')}</div>${trend(ms)}<small>ماندهٔ پایان هر ماه · تومان</small></section>
@@ -105,16 +66,16 @@ function vDash(){
  </div></div>`;
 }
 let LL=null;
-function riskSet(){return Store.d.customers.filter(c=>Store.bal(c.id)>0||c.prevLoan||Store.live().some(t=>t.customerId===c.id)).map(c=>({c,b:Store.bal(c.id),r:Ledger.risk(c.id)}))}
+function riskSet(){return Store.d.customers.filter(c=>Ledger.balance(c.id)>0||c.prevLoan||Ledger.entries(c.id).length).map(c=>({c,b:Ledger.balance(c.id),r:Ledger.risk(c.id)}))}
 function riskBox(){const all=riskSet(),n=l=>all.filter(x=>x.r.level===l).length,H=n('high'),M=n('mid'),L=n('low'),T=H+M+L||1;
  return`<div class="box2"><h3>⚖️ ریسک مشتریان</h3><div class="rb"><i style="width:${H/T*100}%;background:var(--bad)"></i><i style="width:${M/T*100}%;background:var(--warn)"></i><i style="width:${L/T*100}%;background:var(--ok)"></i></div>
- <div class="kpis" style="margin:10px 0 6px"><div class="k-bad" onclick="listBy('risk-high')"><small>پرریسک</small><b data-n="${H}"></b></div><div class="k-warn" onclick="listBy('risk-mid')"><small>متوسط</small><b data-n="${M}"></b></div><div class="k-ok" onclick="listBy('risk-low')"><small>کم‌ریسک</small><b data-n="${L}"></b></div></div>
+ <div class="kpis" style="margin:10px 0 6px"><div class="k-bad" onclick="listBy('risk-high')"><small>پرریسک</small><b>${fmt(H)}</b></div><div class="k-warn" onclick="listBy('risk-mid')"><small>متوسط</small><b>${fmt(M)}</b></div><div class="k-ok" onclick="listBy('risk-low')"><small>کم‌ریسک</small><b>${fmt(L)}</b></div></div>
  <small>امتیاز ریسک (۰ تا ۱۰۰) از دیرکرد، نسبت مانده به حد مجاز و سابقه‌ی پرداخت حساب می‌شود.</small></div>`}
 const RL={high:'پرریسک',mid:'ریسک متوسط',low:'کم‌ریسک'};
 function listBy(k){LL=k;
  if(k.startsWith('risk-')){const lv=k.slice(5),L=riskSet().filter(x=>x.r.level===lv).sort((a,b)=>b.r.score-a.r.score||b.b-a.b);
   return sheet(`<h2>${RL[lv]} <small>(${fmt(L.length)} نفر)</small></h2>${L.slice(0,150).map(x=>`<div class="card" onclick="profile('${x.c.id}')"><div><b>${esc(x.c.name)}</b> <span class="tag rk-${lv}">${fmt(x.r.score)}</span><small>${esc(x.r.reasons.join(' · '))}</small></div><div class="amt ${st(x.c,x.b)}">${fmt(x.b)}<small>تومان</small></div></div>`).join('')||'<p class="empty">موردی نیست</p>'}`)}
-const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0),ms=J.ts([J.today()[0],J.today()[1],1],0);
+const cs=Store.d.customers.map(c=>({c,b:Ledger.balance(c.id)})),db=cs.filter(x=>x.b>0),ms=J.ts([J.today()[0],J.today()[1],1],0);
  if(k==='mDebt'||k==='mPay'){const T=Store.live().filter(t=>t.ts>=ms&&(k==='mDebt'?t.amt>0:t.amt<0)&&t.source!=='import').sort((a,b)=>b.ts-a.ts);
   return sheet(`<h2>${k==='mDebt'?'نسیه‌های این ماه':'دریافتی‌های این ماه'} <small>(${fmt(T.length)} مورد)</small></h2>${T.map(t=>`<div class="card" onclick="profile('${t.cid}')"><div><b>${esc(Store.nm(t.cid))}</b><small>${dt(t.ts)} ${esc(t.note)}</small></div><div class="amt ${t.amt<0?'ok':'bad'}">${fmt(t.amt)}<small>تومان</small></div></div>`).join('')||'<p class="empty">موردی نیست</p>'}<div class="row"><button onclick="closeSheet()">بستن</button></div>`)}
  const m={debtors:['بدهکاران',db.sort((a,b)=>b.b-a.b)],late:['عقب‌افتاده‌ها (سررسید گذشته)',db.filter(x=>!x.c.guest&&an(x.c).overdue.length).sort((a,b)=>an(b.c).overdueDays-an(a.c).overdueDays)],over:['بالای حد مجاز',db.filter(x=>x.b>lim(x.c)).sort((a,b)=>b.b-a.b)]},[t,L]=m[k];
@@ -127,7 +88,7 @@ function trend(ms){
 }
 // ---------- مشتریان ----------
 function vList(){return`<div class="srow"><input class="sr" placeholder="جستجوی نام یا اسم مستعار…" value="${esc(qv)}" oninput="qv=this.value;$('#lst').innerHTML=rows()"><button class="pri addb" onclick="editForm(null)">＋ مشتری</button></div><div id="lst">${rows()}</div>`}
-function rows(){const q=norm(qv),cs=Store.d.customers.filter(c=>norm(c.name+' '+(c.alias||'')).includes(q)).map(c=>({c,b:Store.bal(c.id)})).sort((a,b)=>b.b-a.b).slice(0,150);
+function rows(){const q=norm(qv),cs=Store.d.customers.filter(c=>norm(c.name+' '+(c.alias||'')).includes(q)).map(c=>({c,b:Ledger.balance(c.id)})).sort((a,b)=>b.b-a.b).slice(0,150);
  if(!cs.length)return'<p class="empty">مشتری‌ای پیدا نشد.</p>';
  return cs.map(({c,b})=>`<div class="card" onclick="profile('${c.id}')"><div><b>${esc(c.name)}</b>${c.guest?' <span class="tag gt">مهمان</span>':''}<small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.phone?esc(c.phone):''}</small></div><div class="amt ${st(c,b)}">${fmt(b)}<small>تومان${b<0?' (بستانکار)':''}</small></div></div>`).join('')}
 function moneyInputValue(value){
@@ -141,9 +102,15 @@ function formatMoneyInput(input){
  input.value=next;
  if(offset!==null){let pos=0,count=0;while(pos<next.length&&count<offset){if(next[pos]!==',')count++;pos++}input.setSelectionRange?.(pos,pos)}
 }
-function profile(id,existingBox){const c=find(id),b=Store.bal(id);if(!c)return;const a=an(c),[dl,dc]=dueLbl(c),od=a.oldestUnpaidDebt;
+const PROFILE_PAGE=30;
+function growHistory(button,id){
+ const box=button.closest('.box');
+ box.historyLimit=(box.historyLimit??PROFILE_PAGE)+PROFILE_PAGE;
+ profile(id,box);
+}
+function profile(id,existingBox){const c=find(id),b=Ledger.balance(id);if(!c)return;const a=an(c),[dl,dc]=dueLbl(c),od=a.oldestUnpaidDebt,history=Ledger.entries(id),limit=existingBox?.historyLimit??PROFILE_PAGE;
  const content=`<div class="ph customer-header"><div class="av">${esc(c.name[0]||'؟')}</div><div class="customer-identity"><h2>${esc(c.name)}</h2><small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.guest?'مشتری موقت · ':''}${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'بدون شماره'}</small></div><div class="amt header-balance ${st(c,b)}"><b>${fmt(b)}</b><small>تومان${b<0?' (بستانکار)':''}</small></div></div>
- <div class="kpis"><div><small>کل نسیه</small><b>${fmt(sumTx(id,t=>t.amt>0)+(c.prevLoan||0))}</b></div><div><small>کل پرداخت</small><b>${fmt(sumTx(id,t=>t.amt<0)+(c.prevPay||0))}</b></div>
+ ${DebtInvoice.button(id,'ledger')}${CounterPhotos.button(id)}<div class="kpis"><div><small>کل نسیه</small><b>${fmt(sumTx(id,t=>t.amt>0)+(c.prevLoan||0))}</b></div><div><small>کل پرداخت</small><b>${fmt(sumTx(id,t=>t.amt<0)+(c.prevPay||0))}</b></div>
  <div><small>روز از آخرین پرداخت</small><b>${a.daysSinceLastPayment==null?'—':fmt(a.daysSinceLastPayment)}</b></div><div><small>روز از قدیمی‌ترین بدهی</small><b>${a.daysSinceOldestDebt==null?'—':fmt(a.daysSinceOldestDebt)}</b></div></div>
  ${(()=>{const k=Ledger.risk(id);return`<p class="note rk-${k.level}">ریسک: ${RL[k.level]} (${fmt(k.score)} از ۱۰۰) — ${esc(k.reasons.join(' · '))}</p>`})()}
  ${dl?`<p class="note ${dc}">${dl}${od?' · قدیمی‌ترین بدهی باز: '+dt(od.date)+' (مانده '+fmt(od.remaining)+')':''}</p>`:''}
@@ -152,7 +119,7 @@ function profile(id,existingBox){const c=find(id),b=Store.bal(id);if(!c)return;c
  <label>ثبت دستی <small>تاریخ: ${dt(entryTime())}</small></label><div class="row"><input id="ma" type="text" inputmode="numeric" oninput="formatMoneyInput(this)" placeholder="مبلغ (تومان)"><input id="mn" placeholder="توضیح"></div>
  <div class="row"><input id="md" type="number" inputmode="numeric" placeholder="مهلت (روز) — خالی = ${fmt(dys(c))}"></div>
  <div class="row"><button class="pri" onclick="manual('${id}',1,this)">+ نسیه</button><button onclick="manual('${id}',-1,this)">− پرداخت</button></div>
- <label>تاریخچه</label>${Store.live().filter(t=>t.customerId===id).reverse().sort((a,b)=>b.date-a.date||b.createdAt-a.createdAt).map(t=>`<div class="tx"><span>${dt(t.date)} ${TYPE[t.type]} <small>${SRC[t.source]||''}${t.source==='voice'&&t.meta&&t.meta.confirmed?' · تایید شد ✔':''} ${esc(t.description)}</small></span><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button onclick="delTx('${t.id}','${id}')">🗑</button></div>`).join('')||'<small>هنوز ثبتی نیست</small>'}
+ <label>تاریخچه</label>${history.slice().reverse().sort((a,b)=>b.date-a.date||b.createdAt-a.createdAt).slice(0,limit).map(t=>`<div class="tx"><div class="counter-tx-description">${dt(t.date)} ${TYPE[t.type]} <small>${SRC[t.source]||''}${t.source==='voice'&&t.meta&&t.meta.confirmed?' · تایید شد ✔':''} ${esc(t.description)}</small>${CounterPhotos.linked(t.id)}</div><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button onclick="delTx('${t.id}','${id}')">🗑</button></div>`).join('')||'<small>هنوز ثبتی نیست</small>'}${history.length>limit?`<button type="button" onclick="growHistory(this,'${id}')">ثبت‌های قدیمی‌تر</button>`:''}
  <div class="row">${LL?'<button onclick="listBy(LL)">◀ بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button><button onclick="closeSheet()">بستن</button></div>`;
  if(existingBox){const position=existingBox.scrollTop;existingBox.innerHTML=content;existingBox.scrollTop=position;}
  else {sheet(content);$('#sheet .sh')?.classList.add('customer-sheet');}
@@ -165,7 +132,6 @@ function manual(id,sg,button){if(manualPending)return;const a=Number(norm($('#ma
  const save=()=>{
   try {
    Store.addTransaction(transaction);
-   alertLimit(find(id),sg);
    if(!button||box?.isConnected&&!$('#sheet').hidden)profile(id,box);
    if(button)toast(sg>0?'نسیه ثبت شد':'پرداخت ثبت شد');
   } finally {
@@ -179,7 +145,6 @@ function manual(id,sg,button){if(manualPending)return;const a=Number(norm($('#ma
  // Let the pressed state paint before the synchronous storage commit.
  requestAnimationFrame(()=>setTimeout(save,0));
 }
-function alertLimit(c,sg){const b=Store.bal(c.id);if(sg>0&&b>lim(c))tg(`⚠️ بدهی ${c.name} به ${fmt(b)} تومان رسید (حد: ${fmt(lim(c))})`)}
 function editForm(id,pre){const c=id?find(id):(pre||{});
  sheet(`${id?`<div class="customer-header"><h2>${esc(c.name)}</h2><small>ویرایش پروفایل مشتری</small></div>`:'<h2>مشتری جدید</h2>'}<label>نام</label><input id="en" value="${esc(c.name||'')}"><label>اسم مستعار (برای کسانی که نمی‌شناسی، مثلاً «آقای عینکی»)</label><input id="ea" value="${esc(c.alias||'')}">
  <label>شماره تماس</label><input id="ep" type="tel" value="${esc(c.phone||'')}"><label>یادداشت / آدرس</label><textarea id="eo" rows="2">${esc(c.note||'')}</textarea>
@@ -229,32 +194,70 @@ function trashView(){const T=[...Store.d.trash].sort((a,b)=>b.ts-a.ts);
 function restoreT(id){toast(Store.restore(id)?'بازیابی شد':'مشتری این ثبت در دسترس نیست؛ اول مشتری را بازیابی کن');trashView()}
 function purgeT(id){if(confirm('برای همیشه پاک شود؟')){Store.purge(id);trashView()}}
 // ---------- تنظیمات و بکاپ ----------
-function cloudBackupPanel(){
- const native=window.NasieAndroid,s=Store.d.set;
- if(!native?.cloudStatus)return '<section class="box2"><h3>بکاپ شبانه</h3><small>ارسال خودکار در پس‌زمینه در نسخهٔ جدید APK اجرا می‌شود؛ بکاپ دستی همچنان در دسترس است.</small></section>';
- const state=native.cloudStatus(),identity=native.appIdentity();
- return `<section class="box2"><h3>بکاپ شبانهٔ حساب‌ها</h3><p>${esc(state.status)}</p><small>در صف: ${fmt(state.pending||0)} · تلگرام: ${esc(state.telegram||'—')} · درایو: ${esc(state.drive||'—')}</small>
- ${settingsEditing?`<label class="opt"><input type="checkbox" ${s.autoBackup?'checked':''} onchange="setv('autoBackup',this.checked)">بکاپ خودکار JSON معمولی (شامل نام مشتری‌ها، توکن‌ها و تنظیمات؛ بدون رمزگذاری)</label>
- <label class="opt"><input type="checkbox" ${s.backupTelegram!==false?'checked':''} onchange="setv('backupTelegram',this.checked)">ارسال به ربات تلگرام همین تنظیمات</label>
- <label class="opt"><input type="checkbox" ${s.backupDrive!==false?'checked':''} onchange="setv('backupDrive',this.checked)">ذخیره در گوگل‌درایو خودم</label><button onclick="NasieAndroid.connectDrive()">اتصال / مجوز گوگل‌درایو</button>`:''}
- <div class="row"><button onclick="NasieAndroid.retryCloudBackup();toast('بررسی و ارسال بکاپ درخواست شد')">آماده‌سازی و تلاش مجدد</button><button onclick="render()">به‌روزرسانی وضعیت</button></div>
- <small>پس از ساعت تعیین‌شده، آخرین نسخهٔ روز آماده می‌شود. ارسال ناموفق تا اتصال بعدی در حافظهٔ خصوصی می‌ماند. زمان دقیق به محدودیت باتری اندروید وابسته است؛ Force stop مانع کار پس‌زمینه می‌شود.</small>
- <details><summary>راه‌اندازی گوگل‌درایو</summary><p>در Google Cloud، Drive API را فعال کن و OAuth از نوع Android را با این مشخصات بساز؛ سپس «اتصال» را بزن. کلید امضای نسخه‌های بعدی باید ثابت بماند.</p><small dir="ltr">Package: ${esc(identity.package||'—')}<br>SHA-1: ${esc(identity.sha1||'—')}</small></details></section>`;
+function settingsSection(id,title,body){
+ return `<details class="settings-section" data-settings-section="${id}" ${id==='nightly'?'ontoggle="if(this.open)refreshBackupStatus()"':''}><summary>${title}</summary><div class="settings-body">${body}</div></details>`;
 }
-function requestOfflineVoice(){if(window.NasieAndroid?.downloadOfflineModel)return window.NasieAndroid.downloadOfflineModel();toast('دانلود مدل از نسخهٔ APK انجام می‌شود؛ در مرورگر از تنظیمات گفتار گوشی استفاده کن')}
-function vSet(){const s=Store.d.set;
- return`<div class="row"><h3>تنظیمات ذخیره‌شده</h3><button onclick="toggleSettingsEdit()">${settingsEditing?'پایان ویرایش':'ویرایش'}</button></div>${settingsEditing?`<fieldset class="settings-editor"><section class="box2"><h3>دستیار صوتی فارسی</h3><label>روش تشخیص صدا</label><select onchange="setv('voiceMode',this.value)"><option value="offline" ${s.voiceMode!=='online'?'selected':''}>فارسی آفلاین — مدل همراه برنامه</option><option value="online" ${s.voiceMode==='online'?'selected':''}>سرویس آنلاین گوشی</option></select><small>مدل فارسی داخل APK است. بار اول آماده‌سازی کمی طول می‌کشد؛ بعد از آن اینترنت و فیلترشکن لازم نیست. در حالت آنلاین ممکن است صدا برای پردازش ارسال شود.</small><div class="row"><button onclick="requestOfflineVoice()">بررسی آمادگی مدل فارسی</button></div><small id="offline-model-status">${esc(window.NasieAndroid?.lastModelStatus||'مدل همراه نسخهٔ جدید APK است؛ دانلود داخل گوشی لازم نیست.')}</small><details><summary>راهنمای گفتار آفلاین</summary><p>مدل فارسی همراه APK است؛ بار اول در حافظهٔ خصوصی آماده می‌شود. بعد از پیام آماده بودن، حالت پرواز را روشن کن و با یک مشتری نمونه امتحان کن. اگر صدای خاصی درست تشخیص داده نشد، متن را قبل از ثبت اصلاح کن یا در ویرایش تنظیمات، سرویس آنلاین را انتخاب کن.</p></details></section><label>توکن ربات تلگرام</label><input type="password" autocomplete="off" value="${esc(s.token)}" onchange="setv('token',this.value)" dir="ltr"><label>Chat ID</label><input value="${esc(s.chat)}" onchange="setv('chat',this.value)" dir="ltr">
- <label>حد بدهی پیش‌فرض (تومان)</label><input type="number" value="${s.limit}" onchange="setv('limit',+this.value)"><label>مهلت پیش‌فرض پرداخت (روز)</label><input type="number" value="${s.days}" onchange="setv('days',+this.value)">
- <label>دستیار هوشمند — سرویس</label><select class="sr" onchange="aiPreset(this.value)">${[['openai','OpenAI (ChatGPT) — پولی'],['gemini','Google Gemini — دارای سطح رایگان'],['openrouter','OpenRouter — مدل‌های رایگان :free'],['custom','سفارشی']].map(([v,l])=>`<option value="${v}" ${(AIP[v]||[])[0]===s.aiUrl?'selected':''}>${l}</option>`).join('')}</select><label>آدرس سرویس (سازگار با OpenAI)</label><input value="${esc(s.aiUrl)}" onchange="setv('aiUrl',this.value)" dir="ltr"><label>کلید API</label><input type="password" value="${esc(s.aiKey)}" onchange="setv('aiKey',this.value)" dir="ltr"><label>نام مدل</label><input value="${esc(s.aiModel)}" onchange="setv('aiModel',this.value)" dir="ltr">
- <label class="opt"><input type="checkbox" ${s.aiAnon?'checked':''} onchange="setv('aiAnon',this.checked)"> نام مشتری‌ها به کد تبدیل شود (پیشنهادی؛ سرویس‌های رایگان ممکن است داده را برای بهبود محصول استفاده کنند)</label><small>خلاصه‌ی حساب‌ها برای سرویس انتخابی ارسال می‌شود.</small><label>ساعت یادآور بکاپ روزانه (۰ تا ۲۳)</label><input type="number" min="0" max="23" value="${s.bkHour}" onchange="setv('bkHour',+this.value)">
- </fieldset>`:'<p class="note">اطلاعات ذخیره شده‌اند؛ برای مشاهده یا تغییر، ویرایش را بزن.</p>'}${cloudBackupPanel()}<div class="row"><button class="pri" onclick="backup()">📦 بکاپ کامل JSON</button><button onclick="tg('✅ پیام آزمایشی دفتر نسیه').then(o=>toast(o?'ارسال شد':'ارسال نشد؛ توکن/Chat ID را بررسی کن'))">تست تلگرام</button></div>
- <small>آخرین درخواست دانلود بکاپ: ${s.lastBk||'—'}. بعد از دانلود، وجود فایل را در گوشی بررسی کن. JSON برای بازیابی کامل است؛ اکسل گزارش حساب‌هاست.</small>
- <label>حفاظت از اطلاعات</label><small>نسخه محلی روزانه تا ۳ روز دارای نسخه نگه داشته می‌شود. این نسخه‌ها با پاک‌کردن داده‌های سایت از بین می‌روند؛ JSON را بیرون از گوشی هم نگه دار.</small>
- <div class="row"><button onclick="persistStorage()">درخواست ذخیره‌سازی ماندگار</button>${Store.recoveryText('previous')?'<button onclick="recoverLocal(\'previous\')">بازیابی آخرین وضعیت سالم</button>':''}${Store.recoveryText('before')?'<button onclick="recoverLocal(\'before\')">برگشت به قبل از بازیابی</button>':''}</div>
- ${Store.localBackups().map((b,i)=>`<div class="row"><span>${dt(b.ts)} ${tm(b.ts)}</span><button onclick="downloadLocal(${i})">دانلود JSON</button><button onclick="recoverLocal('${i}')">بازیابی</button></div>`).join('')}
+function refreshBackupStatus(){
+ const native=window.NasieAndroid,target=$('#nightly-backup-status');
+ if(!native?.cloudStatus||!target)return;
+ const state=native.cloudStatus();
+ target.textContent=`${state.status} · فایل‌های در صف: ${fmt(state.pending||0)} · آخرین تلگرام: ${state.telegram||'—'} · آخرین درایو: ${state.drive||'—'}`;
+}
+function refreshDriveIdentity(){
+ const identity=window.NasieAndroid?.appIdentity();
+ if(identity)$('#backup-drive-identity').textContent=`Package: ${identity.package||'—'} · SHA-1: ${identity.sha1||'—'}`;
+}
+function requestOfflineVoice(){
+ if(window.NasieAndroid?.downloadOfflineModel)return window.NasieAndroid.downloadOfflineModel();
+ toast('برای گفتار آفلاین فارسی از نسخهٔ اندروید استفاده کن.');
+}
+function settingsSecret(key,saved){
+ return `<input type="password" autocomplete="off" placeholder="${saved?'ذخیره شده است':'وارد کنید'}" onchange="if(this.value){setv('${key}',this.value);this.value='';this.placeholder='ذخیره شده است'}" dir="ltr">${saved?`<button type="button" onclick="setv('${key}','');render()">حذف مقدار ذخیره‌شده</button>`:''}`;
+}
+function refreshLocalRecovery(target){
+ if(target.dataset.loaded)return;
+ target.dataset.loaded='1';
+ const entries=Store.localBackups();
+ target.querySelector('[data-recovery-actions]').innerHTML=`<div class="row">${Store.hasRecovery('previous')?`<button onclick="recoverLocal('previous')">آخرین وضعیت سالم</button>`:''}${Store.hasRecovery('before')?`<button onclick="recoverLocal('before')">قبل از آخرین بازیابی</button>`:''}</div>
+ ${entries.map((b,i)=>`<div class="row"><span>${dt(b.ts)} ${tm(b.ts)}</span><button onclick="downloadLocal(${i})">دانلود</button><button onclick="recoverLocal('${i}')">بازیابی</button></div>`).join('')}
+ ${Store.hasInternalBackup()?`<button onclick="if(confirm('حساب‌ها به نسخهٔ قبل از ارتقا برگردند؟')&&Store.restoreInternalBackup())location.reload()">بازگردانی نسخهٔ قبل از ارتقا</button>`:''}`;
+}
+function vSet(){
+ const s=Store.d.set,native=window.NasieAndroid;
+ const check=(key,label,checked)=>`<label class="opt"><input type="checkbox" ${checked?'checked':''} onchange="setv('${key}',this.checked)">${label}</label>`;
+ const voice=`<label>روش تشخیص صدا<select onchange="setv('voiceMode',this.value)"><option value="offline" ${s.voiceMode!=='online'?'selected':''}>فارسی آفلاین</option><option value="online" ${s.voiceMode==='online'?'selected':''}>سرویس آنلاین گوشی</option></select></label>
+ <button type="button" onclick="requestOfflineVoice()">بررسی آمادگی مدل فارسی</button><small id="offline-model-status">${esc(native?.lastModelStatus||'مدل فارسی همراه نسخهٔ اندروید است.')}</small>`;
+ const api=`<label>سرویس هوش مصنوعی<select onchange="aiPreset(this.value)">${[['openai','OpenAI'],['gemini','Google Gemini'],['openrouter','OpenRouter'],['custom','سفارشی']].map(([v,l])=>`<option value="${v}" ${(AIP[v]||[])[0]===s.aiUrl?'selected':''}>${l}</option>`).join('')}</select></label>
+ <label>نشانی API<input value="${esc(s.aiUrl)}" onchange="setv('aiUrl',this.value)" dir="ltr"></label>
+ <label>کلید API${settingsSecret('aiKey',s.aiKey)}</label>
+ <label>مدل<input value="${esc(s.aiModel)}" onchange="setv('aiModel',this.value)" dir="ltr"></label>
+ ${check('aiAnon','جایگزینی نام مشتری با کد در درخواست‌ها',s.aiAnon)}`;
+ const telegram=`<label>توکن ربات${settingsSecret('token',s.token)}</label>
+ <label>Chat ID${settingsSecret('chat',s.chat)}</label>
+ <button type="button" onclick="tg('✅ پیام آزمایشی دفتر نسیه').then(ok=>toast(ok?'ارسال شد':'ارسال نشد؛ توکن و Chat ID را بررسی کن'))">تست تلگرام</button>`;
+ const nightly=native?.cloudStatus?`${check('autoBackup','بکاپ خودکار ساعت ۲۲',s.autoBackup)}
+ ${check('backupTelegram','ارسال به ربات تلگرام',s.backupTelegram!==false)}
+ ${check('backupDrive','ذخیره در گوگل‌درایو',s.backupDrive!==false)}
+ <p id="nightly-backup-status" role="status"></p><div class="row"><button onclick="NasieAndroid.retryCloudBackup();toast('تلاش مجدد در صف قرار گرفت')">تلاش مجدد</button><button onclick="refreshBackupStatus()">تازه‌سازی وضعیت</button></div>
+ <details ontoggle="if(this.open)refreshDriveIdentity()"><summary>اتصال گوگل‌درایو</summary><button onclick="NasieAndroid.connectDrive()">اتصال / مجوز درایو</button><small id="backup-drive-identity" dir="ltr"></small></details>`
+ :'<p>بکاپ شبانه در نسخهٔ اندروید انجام می‌شود. در مرورگر، بکاپ دستی در دسترس است.</p>';
+ const backupRestore=`<div class="row"><button class="pri" onclick="backup()">دریافت بکاپ JSON</button><button onclick="$('#imp').click()">بازیابی JSON</button></div>
+ <small>آخرین بکاپ دستی: ${esc(s.lastBk||'—')}</small><details ontoggle="if(this.open)refreshLocalRecovery(this)"><summary>نسخه‌های محلی و ابزارهای بازیابی</summary><div data-recovery-actions></div>
+ ${native?'':`<button onclick="persistStorage()">درخواست ذخیره‌سازی ماندگار مرورگر</button>`}</details>`;
+ const accountDefaults=`<label>سقف بدهی پیش‌فرض (تومان)<input type="number" value="${s.limit}" onchange="setv('limit',+this.value)"></label>
+ <label>مهلت پیش‌فرض پرداخت (روز)<input type="number" value="${s.days}" onchange="setv('days',+this.value)"></label>
+ <div class="row"><button onclick="excelBackup()">گزارش اکسل</button><button onclick="trashView()">سطل زباله</button></div>
+ <details ontoggle="if(this.open)HesabdarSync.restoreSettings()"><summary>اتصال به حسابدار وب</summary><form id="hesabdar-sync-form" onsubmit="HesabdarSync.configure(event)"><label>نشانی اصلی HTTPS<input name="primary" type="url" dir="ltr" required></label><label>نشانی HTTPS روی وای‌فای مشترک<input name="lan" type="url" dir="ltr"></label><label>کلید اتصال<input name="syncKey" type="password" autocomplete="off" dir="ltr"></label><button>ذخیره و همگام‌سازی</button><button type="button" onclick="HesabdarSync.pause()">توقف ارسال به وب</button><p id="hesabdar-sync-status" role="status"></p></form></details>`;
+ return `<section class="settings-grid"><h2>تنظیمات</h2>
+ ${settingsSection('voice','دستیار صوتی',voice)}
+ ${settingsSection('api','سرویس و کلید API',api)}
+ ${settingsSection('telegram','ربات تلگرام',telegram)}
+ ${settingsSection('nightly','بکاپ شبانه',nightly)}
+ ${settingsSection('restore','بکاپ و بازیابی',backupRestore)}
+ ${settingsSection('other','حساب‌ها و ابزارهای دیگر',accountDefaults)}
+ <input type="file" id="imp" accept=".json" hidden onchange="importBackup(this)"></section>`;
+}
 
- ${Store.hasInternalBackup()?'<div class="row"><button onclick="if(confirm(\'داده‌ها به قبل از ارتقای ساختار برگردد؟ تغییرات بعد از ارتقا از بین می‌رود.\')&&Store.restoreInternalBackup())location.reload()">↩︎ بازگردانی بکاپ داخلی قبل از ارتقا</button></div>':''}<div class="row"><button onclick="Store.exportJson()">خروجی JSON</button><button onclick="$('#imp').click()">بازیابی JSON</button><button onclick="excelBackup()">گزارش اکسل</button><button onclick="trashView()">🗑 سطل زباله</button></div>
- <input type="file" id="imp" accept=".json" hidden onchange="importBackup(this)">`}
 async function importBackup(input){const file=input.files?.[0];input.value='';if(!file)return;
  try{const data=Store.prepare(await file.text());if(!confirm(`بازیابی ${data.customers.length} مشتری و ${data.tx.length} تراکنش، حساب‌های فعلی را جایگزین می‌کند. نسخه برگشت نیز نگه داشته می‌شود. ادامه؟`))return;
  Store.replacePrepared(data);render();toast('بازیابی و ذخیره کامل شد')}catch(e){toast(e.storeError?e.message:'فایل قابل خواندن نیست؛ بازیابی انجام نشد')}}
@@ -263,11 +266,11 @@ function recoverLocal(kind){try{const raw=Store.recoveryText(kind);if(!raw)retur
  Store.replacePrepared(data);render();toast('بازیابی کامل شد')}catch(e){toast(e.message)}}
 function downloadLocal(index){const b=Store.localBackups()[index];if(b)Store.download(b.raw,'nasie-local-'+b.ts+'.json')}
 async function persistStorage(){const ok=await Store.requestPersistence();toast(ok?'ذخیره‌سازی ماندگار فعال شد؛ بکاپ خارج از گوشی همچنان لازم است':'مرورگر دسترسی ماندگار نداد؛ بکاپ خارج از گوشی نگه دار')}
-function setv(k,v){const s=Store.d.set;if(s.autoBackup&&v===false&&((k==='backupTelegram'&&s.backupDrive===false)||(k==='backupDrive'&&s.backupTelegram===false))){toast('برای خاموش کردن هر دو مقصد، اول بکاپ خودکار را خاموش کن');render();return;}if(k==='autoBackup'&&v&&s.backupTelegram===false&&s.backupDrive===false)return toast('حداقل یک مقصد بکاپ را انتخاب کن');s[k]=v;Store.save()}
+function setv(k,v){const s=Store.d.set;if(s.autoBackup&&v===false&&((k==='backupTelegram'&&s.backupDrive===false)||(k==='backupDrive'&&s.backupTelegram===false))){toast('برای خاموش کردن هر دو مقصد، اول بکاپ خودکار را خاموش کن');render();return;}if(k==='autoBackup'&&v&&s.backupTelegram===false&&s.backupDrive===false)return toast('حداقل یک مقصد بکاپ را انتخاب کن');s[k]=v;enableNightlyTelegram();Store.save()}
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((ok,no)=>{const s=document.createElement('script');s.src='js/vendor/xlsx.full.min.js';s.onload=ok;s.onerror=()=>{s.remove();const f=document.createElement('script');f.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';f.onload=ok;f.onerror=no;document.head.appendChild(f)};document.head.appendChild(s)});
 async function excelBackup(){try{await loadX()}catch(e){return toast('برای ساخت اکسل یک‌بار اتصال اینترنت لازم است')}
  const D=Store.d,U=XLSX.utils,wb=U.book_new(),add=(r,n)=>U.book_append_sheet(wb,U.json_to_sheet(r),n);
- add(D.customers.map(c=>({نام:c.name,'اسم مستعار':c.alias||'',تلفن:c.phone||'',نوع:c.guest?'مهمان':'مشتری',مانده:Store.bal(c.id)})),'مشتریان');
+ add(D.customers.map(c=>({نام:c.name,'اسم مستعار':c.alias||'',تلفن:c.phone||'',نوع:c.guest?'مهمان':'مشتری',مانده:Ledger.balance(c.id)})),'مشتریان');
  add(D.tx.map(t=>({تاریخ:dt(t.date),مشتری:Store.nm(t.customerId),مبلغ:t.amt,نوع:TYPE[t.type],سررسید:t.dueDate?dt(t.dueDate):'',منبع:t.source,وضعیت:t.status,توضیح:t.description})),'ثبت‌ها');
  add(D.log.map(e=>({زمان:dt(e.ts)+' '+tm(e.ts),شرح:logText(e)})),'تغییرات');
  const name=`nasie-${new Date().toISOString().slice(0,10)}.xlsx`,blob=new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/octet-stream'}),a=document.createElement('a');
@@ -283,11 +286,11 @@ function vAI(){const s=Store.d.set;if(!s.aiKey)return'<p class="empty">برای 
 const codeOf=c=>Store.d.set.aiAnon?'C'+(Store.d.customers.indexOf(c)+1):c.name+(c.alias?' ('+c.alias+')':'');
 function anonText(t){let o=t;[...Store.d.customers].sort((a,b)=>b.name.length-a.name.length).forEach(c=>{const code='C'+(Store.d.customers.indexOf(c)+1);for(const nm of[c.name,c.alias])if(nm&&nm.length>1)o=o.split(nm).join(code)});return o}
 const deAnon=t=>t.replace(/\bC(\d+)\b/g,(m,n)=>(Store.d.customers[+n-1]||{}).name||m);
-function ctx(q){const cs=Store.d.customers.map(c=>({c,b:Store.bal(c.id)})),db=cs.filter(x=>x.b>0).sort((a,b)=>b.b-a.b),nq=norm(q),
+function ctx(q){const cs=Store.d.customers.map(c=>({c,b:Ledger.balance(c.id)})),db=cs.filter(x=>x.b>0).sort((a,b)=>b.b-a.b),nq=norm(q),
  row=x=>`${codeOf(x.c)}${x.c.guest?' [مهمان]':''}: ${Math.round(x.b)} تومان، ${age(x.c)} روز از قدیمی‌ترین بدهی، ${an(x.c).overdueDays?an(x.c).overdueDays+' روز دیرکرد':'بدون دیرکرد'}`;
- let t=`امروز: ${dt(Date.now())}\nجمع بدهی: ${Math.round(Store.total())} تومان\nتعداد مشتری: ${cs.length}، بدهکار: ${db.length}\nحد پیش‌فرض: ${lim({})} تومان، مهلت پیش‌فرض: ${dys({})} روز\n۲۰ بدهکار اول:\n${db.slice(0,20).map(row).join('\n')}\nمهمان‌های بدهکار:\n${db.filter(x=>x.c.guest).map(row).join('\n')||'—'}\nپرریسک‌ترین‌ها (امتیاز ۰ تا ۱۰۰):\n${riskSet().sort((a,b)=>b.r.score-a.r.score).slice(0,8).map(x=>`${codeOf(x.c)}: ${x.r.score} (${x.r.reasons.join('، ')})`).join('\n')}\nماهانه (نسیه/دریافتی): ${months().map(m=>`${m.l}:${m.d}/${m.p}`).join(' ، ')}`;
+ let t=`امروز: ${dt(Date.now())}\nجمع بدهی: ${Math.round(Ledger.total())} تومان\nتعداد مشتری: ${cs.length}، بدهکار: ${db.length}\nحد پیش‌فرض: ${lim({})} تومان، مهلت پیش‌فرض: ${dys({})} روز\n۲۰ بدهکار اول:\n${db.slice(0,20).map(row).join('\n')}\nمهمان‌های بدهکار:\n${db.filter(x=>x.c.guest).map(row).join('\n')||'—'}\nپرریسک‌ترین‌ها (امتیاز ۰ تا ۱۰۰):\n${riskSet().sort((a,b)=>b.r.score-a.r.score).slice(0,8).map(x=>`${codeOf(x.c)}: ${x.r.score} (${x.r.reasons.join('، ')})`).join('\n')}\nماهانه (نسیه/دریافتی): ${months().map(m=>`${m.l}:${m.d}/${m.p}`).join(' ، ')}`;
  for(const x of cs.filter(x=>nq.includes(norm(x.c.name))||(x.c.alias&&nq.includes(norm(x.c.alias)))).slice(0,3))
-  t+=`\nجزئیات ${codeOf(x.c)} (حد ${lim(x.c)}، مهلت ${dys(x.c)} روز): `+Store.live().filter(y=>y.customerId===x.c.id).sort((a,b)=>b.ts-a.ts).slice(0,15).map(y=>`${dt(y.date)} ${TYPE[y.type]} ${y.amount}${y.dueDate?' سررسید '+dt(y.dueDate):''}`).join('، ');
+  t+=`\nجزئیات ${codeOf(x.c)} (حد ${lim(x.c)}، مهلت ${dys(x.c)} روز): `+Ledger.entries(x.c.id).slice().sort((a,b)=>b.ts-a.ts).slice(0,15).map(y=>`${dt(y.date)} ${TYPE[y.type]} ${y.amount}${y.dueDate?' سررسید '+dt(y.dueDate):''}`).join('، ');
  return t}
 async function askAI(){const q=$('#aq').value.trim(),s=Store.d.set;if(!q)return;chat.push({r:'user',c:q},{r:'assistant',c:'…'});render();
  const A=t=>s.aiAnon?anonText(t):t,sys='تو دستیار حسابداری یک فروشگاه هستی. فقط بر اساس داده‌ی زیر و گفت‌وگو پاسخ بده، هرگز عدد یا نام از خودت نساز، اگر داده کافی نیست بگو. فارسی، کوتاه و روشن جواب بده. مبالغ به تومان است.'+(s.aiAnon?' نام مشتری‌ها با کد (مثل C12) آمده؛ در پاسخ دقیقاً همان کد را بنویس.':'')+'\n\n'+ctx(q);
@@ -309,7 +312,7 @@ function updateCmdSuggestions(){
  const box=$('#cmd-suggestions');if(!box)return;
  if(!liveCmdMatches.length)return hideCmdSuggestions();
  box.hidden=false;commandChoice=-1;$('#cmd').setAttribute('aria-expanded','true');
- box.innerHTML=`<div class="suggestion-heading"><span>مشتری‌های مرتبط${on?' · در حال شنیدن':''}</span><button type="button" onclick="hideCmdSuggestions()" aria-label="بستن پیشنهادها">×</button></div><div role="listbox" aria-label="مشتری‌های مرتبط">${liveCmdMatches.map((c,i)=>`<button id="cmd-option-${i}" class="cmd-option" role="option" aria-selected="false" ${on?'disabled':''} onclick="selectCmdCustomer('${c.id}')"><span><b>${esc(c.name)}</b>${c.alias?`<small>${esc(c.alias)}</small>`:''}</span><small>${fmt(Store.bal(c.id))} تومان</small></button>`).join('')}</div>`;
+ box.innerHTML=`<div class="suggestion-heading"><span>مشتری‌های مرتبط${on?' · در حال شنیدن':''}</span><button type="button" onclick="hideCmdSuggestions()" aria-label="بستن پیشنهادها">×</button></div><div role="listbox" aria-label="مشتری‌های مرتبط">${liveCmdMatches.map((c,i)=>`<button id="cmd-option-${i}" class="cmd-option" role="option" aria-selected="false" ${on?'disabled':''} onclick="selectCmdCustomer('${c.id}')"><span><b>${esc(c.name)}</b>${c.alias?`<small>${esc(c.alias)}</small>`:''}</span><small>${fmt(Ledger.balance(c.id))} تومان</small></button>`).join('')}</div>`;
 }
 function selectCmdCustomer(id){
  if(on)return;const c=find(id);if(!c)return toast('این مشتری دیگر در فهرست نیست');
@@ -327,7 +330,7 @@ function cmdKeyDown(e){
  if(e.key==='Enter'){e.preventDefault();if(open&&commandChoice>=0&&!on)selectCmdCustomer(liveCmdMatches[commandChoice].id);else submitCmd()}
 }
 function customerChoiceRows(list,handler){
- return list.map((c,i)=>`<button class="customer-choice" onclick="${handler}('${c.id}')"><span><b>${esc(c.name)}</b><small>${i===0?'نزدیک‌ترین پیشنهاد':'پیشنهاد دیگر'}${c.alias?' · '+esc(c.alias):''}</small></span><span>${fmt(Store.bal(c.id))}<small>تومان</small></span></button>`).join('');
+ return list.map((c,i)=>`<button class="customer-choice" onclick="${handler}('${c.id}')"><span><b>${esc(c.name)}</b><small>${i===0?'نزدیک‌ترین پیشنهاد':'پیشنهاد دیگر'}${c.alias?' · '+esc(c.alias):''}</small></span><span>${fmt(Ledger.balance(c.id))}<small>تومان</small></span></button>`).join('');
 }
 function chooseVoiceCustomer(text,o={}){
  voiceSelection={text,o};const list=customerSuggestions(text,true);
@@ -347,13 +350,13 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  }
  if(o.source==='voice'&&!o.customerChosen&&!selected&&['ask','tx'].includes(r.intent))return chooseVoiceCustomer(text,o);
  if(r.intent==='nav'){if(r.to==='trash')return trashView();if(r.to==='backup')return backup();tab=r.to;return render()}
- if(r.intent==='total')return toast('جمع بدهی‌ها: '+fmt(Store.total())+' تومان');
+ if(r.intent==='total')return toast('جمع بدهی‌ها: '+fmt(Ledger.total())+' تومان');
  if(r.intent==='today'){const L=Store.d.log.filter(x=>x.ts>=new Date().setHours(0,0,0,0)&&x.t==='tx');return toast(`امروز: نسیه ${fmt(L.filter(x=>x.a>0).reduce((a,x)=>a+x.a,0))} · دریافتی ${fmt(L.filter(x=>x.a<0).reduce((a,x)=>a+x.a,0))} تومان`)}
  if(r.intent==='undo'){const t=[...Store.live()].sort((a,b)=>b.createdAt-a.createdAt)[0];if(!t)return toast('ثبتی نیست');
   return sheet(`<h2>حذف آخرین ثبت؟</h2><p>${TYPE[t.type]} <b>${fmt(t.amount)}</b> — ${esc(Store.nm(t.customerId))}</p><div class="row"><button class="pri" onclick="Store.delTx('${t.id}');closeSheet();toast('به سطل زباله رفت')">بله، حذف</button><button onclick="closeSheet()">لغو</button></div>`)}
  if(r.intent==='newc')return editForm(null,{name:r.name,guest:r.guest});
  if(r.intent==='ask'){const cs=r.candidates;if(!cs.length)return toast('مشتری پیدا نشد: '+(r.name||''));if(cs.length==1||cs[0].score-cs[1].score>=.06)return profile(cs[0].id);
-  return sheet(`<h2>منظورتان کدام است؟</h2>${cs.map(x=>`<div class="card" onclick="profile('${x.id}')"><b>${esc(x.name)}</b><span class="amt">${fmt(Store.bal(x.id))}</span></div>`).join('')}`)}
+  return sheet(`<h2>منظورتان کدام است؟</h2>${cs.map(x=>`<div class="card" onclick="profile('${x.id}')"><b>${esc(x.name)}</b><span class="amt">${fmt(Ledger.balance(x.id))}</span></div>`).join('')}`)}
  if(!r.name&&!r.candidates.length)return toast('نام مشتری تشخیص داده نشد');
  cmd=r;r.entryDate=entryTime();r.vid=Store.vlog({rawText:r.rawText,type:r.type,amount:r.amount,customer:r.customerName,confidence:r.confidence,source:r.source,result:'pending'});
  const cs=r.candidates,sure=!!r.customerId,one=cs.length===1&&!sure;
@@ -363,7 +366,7 @@ function run(text,o={}){if(!text.trim())return;const r=parseCmd(text,o);
  <label for="voice-amount">مبلغ به تومان (قابل اصلاح)</label><input id="voice-amount" inputmode="numeric" oninput="formatMoneyInput(this)" value="${moneyInputValue(r.amount)}">
  ${r.colloquial?`<label class="opt"><input type="checkbox" id="kk" checked> «${fmt(r.amountRaw)} تومن» یعنی ${fmt(r.amountRaw*1000)} تومان</label>`:''}
  <label>${one?`منظورتان «${esc(cs[0].name)}» است؟`:cs.length&&!sure?'منظورتان کدام است؟':'مشتری'}</label>
- ${cs.map((x,i)=>`<label class="opt"><input type="radio" name="cs" value="${i}" ${sure&&i==0?'checked':''}> ${esc(x.name)}${x.alias?' «'+esc(x.alias)+'»':''} <small>مانده ${fmt(Store.bal(x.id))}</small></label>`).join('')}
+ ${cs.map((x,i)=>`<label class="opt"><input type="radio" name="cs" value="${i}" ${sure&&i==0?'checked':''}> ${esc(x.name)}${x.alias?' «'+esc(x.alias)+'»':''} <small>مانده ${fmt(Ledger.balance(x.id))}</small></label>`).join('')}
  <label class="opt"><input type="radio" name="cs" value="new" ${cs.length?'':'checked'}> مشتری جدید</label>
  <input id="nn" placeholder="نام" value="${esc(cs.length?'':r.name)}"><input id="na" placeholder="اسم مستعار (اختیاری)" style="margin-top:6px">
  <label class="opt"><input type="checkbox" id="ng" ${r.guest?'checked':''}> مشتری موقت (مهمان)</label>
@@ -381,12 +384,9 @@ function okCmd(){const r=cmd;if(!r||!r.open)return;
  let c;const saved=Store.batch(()=>{if(v==='new'){const n=$('#nn').value.trim(),a=$('#na').value.trim();if(!n&&!a)return toast('نام یا اسم مستعار را وارد کن');c=Store.addC(n||a,{alias:a,guest:$('#ng').checked})}else c=find(r.candidates[+v]?.id);
  if(!c){toast('مشتری پیدا نشد؛ دوباره انتخاب کن');return false}const now=r.entryDate||entryTime();
  Store.addTransaction({customerId:c.id,type:ty,amount:amt,date:now,dueDate:ty==='credit'?now+(dd||dys(c))*DAY:null,description:'',items:r.items||[],source:r.source,meta:{rawText:r.rawText,confidence:r.confidence,confirmed:true}});
- Store.vset(r.vid,'confirmed');return true});if(!saved)return;$('#cmd').value='';voiceText='';closeSheet();alertLimit(c,ty==='credit'?1:-1)}
-function sweep(){if(!Store.writeAllowed||Store.blocked)return;const today=new Date().toDateString(),messages=[];
- Store.batch(()=>{for(const c of Store.d.customers){const a=an(c);if(a.overdue.length&&!c.guest&&Store.d.alerts[c.id]!==today&&Store.d.set.token&&Store.d.set.chat){Store.d.alerts[c.id]=today;messages.push(`⏰ ${c.name}: ${a.overdueDays} روز از سررسید گذشته، مانده ${fmt(a.remaining)} تومان`)}}
-  if(messages.length)Store.save()});for(const message of messages)tg(message)}
+ Store.vset(r.vid,'confirmed');return true});if(!saved)return;$('#cmd').value='';voiceText='';closeSheet()}
 $('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')dismiss()});
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{if(tab===b.dataset.t)return;if(b.dataset.t==='hesabdar')HesabdarLocal.reset();tab=b.dataset.t;render()});
 function submitCmd(){if(on&&rec){rec.stop();return}const text=$('#cmd').value;run(text,{source:voiceText&&text===voiceText?'voice':'manual'})}
 $('#go').onclick=submitCmd;$('#cmd').onkeydown=cmdKeyDown;$('#cmd').oninput=updateCmdSuggestions;$('#cmd').onfocus=updateCmdSuggestions;
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.cmd'))hideCmdSuggestions()});
@@ -432,4 +432,17 @@ $('#mic').setAttribute('aria-label','شروع دستور صوتی');$('#mic').se
 if(!SR)$('#mic').onclick=()=>toast('از میکروفون کیبورد برای نوشتن دستور استفاده کن');
 else $('#mic').onclick=()=>{if(on&&rec){rec.stop();return}listen()};
 
-render();Store.startGuard(()=>render());setInterval(()=>{if(document.visibilityState!=='hidden'&&Store.writeAllowed&&!Store.blocked){Store.checkpoint();sweep()}},60000);if(window.Liquid)Liquid.init();setTimeout(()=>document.body.classList.remove('intro'),3300);
+function enableNightlyTelegram(){
+ const s=Store.d.set;
+ if(!window.NasieAndroid||s.nightlyTelegramConfigured||!s.token.trim()||!s.chat.trim())return false;
+ s.nightlyTelegramConfigured=true;
+ s.autoBackup=true;
+ s.backupTelegram=true;
+ s.backupDrive??=false;
+ s.bkHour=22;
+ return true;
+}
+render();Store.startGuard(()=>{
+ if(Store.writeAllowed&&!Store.blocked&&enableNightlyTelegram())Store.save();
+ if(document.visibilityState!=='hidden')render();
+});setInterval(()=>{if(document.visibilityState!=='hidden'&&Store.writeAllowed&&!Store.blocked){Store.checkpoint()}},60000);

@@ -20,6 +20,10 @@
   retryCloudBackup(){bridge.retryCloudBackup()},
   appIdentity(){try{return JSON.parse(bridge.appIdentity())}catch(e){return {}}},
   ...(typeof bridge.commitLedger==='function'?{commitLedger:(expected,next,keepPrevious)=>call('commitLedger',expected,next,keepPrevious)}:{}),
+  ...(typeof bridge.captureCounter==='function'?{counter:{
+   config:()=>call('counterConfig'), save:(...args)=>call('configureCounter',...args),
+   capture:id=>bridge.captureCounter(id), photo:(id,temporary=false)=>call('counterPhoto',id,temporary)
+  }}:{}),
   lastModelStatus:'',
   downloadOfflineModel(){bridge.downloadOfflineModel()},
   modelStatus(message){
@@ -29,6 +33,7 @@
    if(typeof toast==='function')toast(this.lastModelStatus);
   },
   exportText(text,name,type){call('exportFile',encode(new TextEncoder().encode(text)),name,type);exportName=name},
+  ...(typeof bridge.sharePdf==='function'?{async sharePdf(blob,name){call('sharePdf',encode(new Uint8Array(await blob.arrayBuffer())),name)}}:{}),
   async exportBlob(blob,name){call('exportFile',encode(new Uint8Array(await blob.arrayBuffer())),name,blob.type||'application/octet-stream');exportName=name},
   saved(ok){
    if(ok&&exportName.startsWith('nasie-backup-')&&typeof Store!=='undefined'&&Store.writeAllowed&&!Store.blocked){
@@ -57,7 +62,7 @@
   if(type==='end'){session=null;r.onend?.()}
  };
  window.NasieAndroid.guard=(store,changed)=>{
-  const acquire=()=>{store.load();store.writeAllowed=true;store.guardMessage='';store.checkpoint();changed()};
+  const acquire=()=>{let changedOnDisk=true;try{changedOnDisk=localStorage.getItem('nasie')!==store._baseRaw}catch{}if(changedOnDisk||store.blocked)store.load();store.writeAllowed=true;store.guardMessage='';store.scheduleCheckpoint();changed()};
   const release=()=>{store.writeAllowed=false;store.guardMessage='برنامه در پس‌زمینه است؛ ثبت متوقف است';changed()};
   store.acquireWriter=acquire;store.releaseWriter=release;
   document.addEventListener('visibilitychange',()=>document.visibilityState==='hidden'?release():acquire());

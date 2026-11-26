@@ -1,4 +1,4 @@
-// nasie-release:23
+// nasie-release:30
 // Safety layer: keep schema 2 and existing ledger APIs, commit or roll back each operation.
 (() => {
  const clone=x=>JSON.parse(JSON.stringify(x));
@@ -55,18 +55,21 @@
   ensureWrite(recovery=false){if(!this.writeAllowed)fail(this.guardMessage||'این پنجره فقط برای مشاهده است');if(this.blocked&&!recovery)fail(this.blocked)},
   rollback(){if(this._lastGood)this.d=clone(this._lastGood);this._dirty=false;this.ver++},
   save(recovery=false){if(this._depth){this._dirty=true;return true}
-   try{this.ensureWrite(recovery===true);this.validate(this.d);const current=localStorage.getItem('nasie');
+   try{this.ensureWrite(recovery===true);this.validate(this.d);const native=typeof window!=='undefined'&&window.NasieAndroid?.commitLedger;
+    const current=native?this._baseRaw:localStorage.getItem('nasie');
     if(current!==this._baseRaw)fail('حساب‌ها در پنجره دیگری تغییر کرده‌اند؛ صفحه را دوباره باز کن. این تغییر ثبت نشد.');
     const next=JSON.stringify(this.d);if(next===current){this._lastGood=clone(this.d);return true}
     // Preserve the exact previous data before replacing the main ledger.
-    if(typeof window!=='undefined'&&window.NasieAndroid?.commitLedger)window.NasieAndroid.commitLedger(current,next,!this.blocked);
+    if(native)native(current,next,!this.blocked);
     else {
      if(current&&!this.blocked)localStorage.setItem('nasie_last_good',current);
      localStorage.setItem('nasie',next);
     }
     this._baseRaw=next;this._lastGood=clone(this.d);this.ver++;this._dirty=false;
    }catch(e){this.rollback();if(e.storeError)throw e;fail('ذخیره نشد؛ حافظه یا دسترسی ذخیره‌سازی مشکل دارد. تغییر به حساب‌ها اعمال نشد. خروجی JSON بگیر.')}
-   this.checkpoint();return true;
+   this.scheduleCheckpoint();
+   if(typeof window!=='undefined'&&typeof window.dispatchEvent==='function'&&typeof Event==='function')window.dispatchEvent(new Event('nasie-ledger-saved'));
+   return true;
   },
   batch(fn){if(this._depth)return fn();this.ensureWrite();const before=clone(this.d);this._depth=1;this._dirty=false;
    try{const result=fn();this._depth=0;if(this._dirty)this.save();return result}catch(e){this._depth=0;this._dirty=false;this.d=before;this.ver++;throw e}
@@ -83,12 +86,18 @@
   download(text,name,type='application/json'){if(window.NasieAndroid)return window.NasieAndroid.exportText(text,name,type);const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)},
   exportJson(){this.download(this.backupText(),'nasie-backup-'+Date.now()+'.json')},
   localBackups(){try{const a=JSON.parse(safeGet('nasie_daily_backups')||'[]');return Array.isArray(a)?a.filter(x=>plain(x)&&typeof x.raw==='string'&&typeof x.day==='string'):[]}catch(e){return []}},
+  scheduleCheckpoint(){
+   if(typeof window==='undefined'||!window.NasieAndroid||typeof setTimeout!=='function')return this.checkpoint();
+   if(this._checkpointTimer!==undefined)clearTimeout(this._checkpointTimer);
+   this._checkpointTimer=setTimeout(()=>{this._checkpointTimer=undefined;this.checkpoint();},2500);
+  },
   checkpoint(){if(this.blocked||!this.writeAllowed||!this._baseRaw)return false;
    try{const day=new Date().toDateString(),a=this.localBackups(),entry={day,ts:Date.now(),raw:this._baseRaw};
     const last=a[a.length-1];if(last&&last.day===day&&last.raw===entry.raw)return true;
     localStorage.setItem('nasie_daily_backups',JSON.stringify([...a.filter(x=>x.day!==day),entry].slice(-3)));this.backupWarning='';return true;
    }catch(e){this.backupWarning='نسخه روزانه محلی ذخیره نشد؛ بکاپ JSON را بیرون از گوشی نگه دار';return false}
   },
+  hasRecovery(kind){return safeGet(kind==='previous'?'nasie_last_good':'nasie_before_restore')!==null},
   recoveryText(kind){if(kind==='previous')return safeGet('nasie_last_good');if(kind==='before')return safeGet('nasie_before_restore');return this.localBackups()[Number(kind)]?.raw||null},
   async requestPersistence(){if(window.NasieAndroid)return true;try{return !!(await navigator.storage?.persist())}catch(e){return false}},
   startGuard(changed){if(typeof navigator==='undefined')return;

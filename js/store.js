@@ -1,4 +1,4 @@
-// nasie-release:23
+// nasie-release:30
 // ذخیره‌سازی محلی — نسخه‌ی ۲ (schema 2): ساختار Transaction حرفه‌ای.
 // فیلدهای قدیمی cid/amt/note/ts به‌عنوان «آینه» نگه داشته می‌شوند تا داده‌ها و کدهای قدیمی خراب نشوند.
 // type: credit(نسیه، +) | payment(پرداخت، −) | adjustment(تعدیل، amount علامت‌دار)
@@ -41,7 +41,7 @@ const Store={d:{customers:[],tx:[],trash:[],log:[],voiceLog:[],schema:2,set:{...
   const t=this.mirror({id:this.uid(),customerId:o.customerId,type,amount:type==='adjustment'?(+o.amount||0):Math.abs(+o.amount||0),date,
    dueDate:o.dueDate!==undefined?o.dueDate:(type==='credit'?date+this.dueDays(o.customerId)*DAY:null),
    description:o.description||'',items:o.items||[],createdAt:now,source:o.source||'manual',status:'active'});
-  if(o.meta)t.meta=o.meta;this.d.tx.push(t);this.log('tx',this.nm(t.customerId),this.sgn(t),t.date);this.save();return t},
+  if(o.meta)t.meta=o.meta;this.d.tx.push(t);if(typeof CounterPhotos!=='undefined')CounterPhotos.movePending(t);this.log('tx',this.nm(t.customerId),this.sgn(t),t.date);this.save();return t},
  addTx(cid,amt,note,o){return this.addTransaction({...o,customerId:cid,type:amt>0?'credit':amt<0?'payment':'adjustment',amount:Math.abs(amt),description:note})},
  cancelTx(id){const t=this.d.tx.find(x=>x.id===id);if(t){t.status='cancelled';this.log('tx-',this.nm(t.customerId),this.sgn(t));this.save()}},
  delTx(id){const t=this.d.tx.find(x=>x.id===id);if(!t)return;this.d.tx=this.d.tx.filter(x=>x.id!==id);

@@ -120,7 +120,7 @@ browser.Store = {
   addTransaction(){transactionsWritten++},vset(){},batch(fn){return fn()}
 };
 execute("let cmd={open:true,amount:50000,amountRaw:50,candidates:[{id:'a'}],source:'voice',rawText:'علی پنجاه هزار'};");
-vm.runInContext(app.slice(app.indexOf('function okCmd()'),app.indexOf('// ----------',app.indexOf('function okCmd()')) > -1 ? app.indexOf('// ----------',app.indexOf('function okCmd()')) : app.indexOf('function sweep()')),browser);
+vm.runInContext(app.slice(app.indexOf('function okCmd()'),app.indexOf("$('#sheet').addEventListener",app.indexOf('function okCmd()'))),browser);
 element('input[name=cs]:checked').value='new';
 element('input[name=ty]:checked').value='credit';
 element('#voice-amount').value='-50';

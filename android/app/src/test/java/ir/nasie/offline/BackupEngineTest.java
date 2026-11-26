@@ -40,11 +40,31 @@ public class BackupEngineTest {
   BackupEngine.write(ledger,new JSONObject().put("nasie","{}"));try{BackupSender.runPending(context,null,()->false);fail("invalid ledger accepted");}catch(Exception expected){assertTrue(job.exists());}
  }
  @Test public void nightlyCutoffKeepsTodayUntilNightAndCatchesUpOlderDays(){
-  assertFalse(BackupEngine.due("2026-11-15","2026-11-15",21,22,false));
-  assertTrue(BackupEngine.due("2026-11-15","2026-11-15",22,22,false));
-  assertTrue(BackupEngine.due("2026-11-14","2026-11-15",1,22,false));
-  assertFalse(BackupEngine.due("2026-11-16","2026-11-15",23,22,false));
-  assertTrue(BackupEngine.due("2026-11-15","2026-11-15",10,22,true));
+  assertFalse(BackupEngine.due("2026-11-15","2026-11-15",21));
+  assertTrue(BackupEngine.due("2026-11-15","2026-11-15",22));
+  assertTrue(BackupEngine.due("2026-11-14","2026-11-15",1));
+  assertFalse(BackupEngine.due("2026-11-16","2026-11-15",23));
+  assertFalse(BackupEngine.due("2026-11-15","2026-11-15",10));
+  java.util.Calendar time=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Tehran"));
+  time.clear();time.set(2026,10,15,21,59,0);
+  assertEquals(60_000L,BackupEngine.delayToNight(time));
+  time.set(2026,10,15,22,1,0);
+  assertEquals(86_340_000L,BackupEngine.delayToNight(time));
+  assertEquals("2026-11-16",BackupEngine.stageDay("2026-11-15","2026-11-15"));
+  assertEquals("2026-11-15",BackupEngine.stageDay("2026-11-15","2026-11-14"));
+ }
+ @Test public void duplicateLegacyJobsOnlySendOneTelegramDocumentPerSnapshotDay()throws Exception {
+  JSONObject first=BackupEngine.read(job).put("day","2026-11-15").put("drive",false);
+  BackupEngine.write(job,first);
+  File duplicate=new File(BackupEngine.dir(context),"second.json.job");
+  BackupEngine.write(duplicate,first.put("name","second.json"));
+  final int[] sent={0};
+  BackupSender.Delivery delivery=new BackupSender.Delivery(){
+   public void telegram(JSONObject snapshot,JSONObject settings){sent[0]++;}
+   public void drive(Context c,JSONObject snapshot){fail("Drive was not selected");}
+  };
+  assertFalse(BackupSender.runPending(context,delivery,()->false));
+  assertEquals(1,sent[0]);assertFalse(job.exists());assertFalse(duplicate.exists());
  }
  @Test public void corruptSnapshotIsKeptAndNeverUploaded()throws Exception {
   JSONObject damaged=BackupEngine.read(job);damaged.put("raw","corrupt");BackupEngine.write(job,damaged);

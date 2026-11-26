@@ -43,6 +43,7 @@ jobs:
           node tests/ui-test.js
           node tests/sw-test.js
           node tests/android-test.cjs
+          node --test tests/hesabdar-local.test.cjs
       - name: Bundle offline assets
         run: node scripts/prepare-android.cjs
       - name: Bundle verified Persian offline voice model

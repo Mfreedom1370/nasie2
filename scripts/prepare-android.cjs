@@ -5,7 +5,7 @@ const dest = path.join(root, 'android/app/src/main/assets/www');
 const files = ['PS/background.png','index.html','manifest.webmanifest','icon-192.png','icon-512.png',
  'css/style.css','css/fonts/iranyekanwebregular.woff2','css/fonts/iranyekanwebbold.woff2',
  'js/store.js','js/safety.js','js/jdate.js','js/parser.js','js/ledger.js','js/telegram.js',
- 'js/liquid.js','js/app.js','js/vendor/xlsx.full.min.js','js/android.js'];
+ 'js/liquid.js','js/hesabdar-local.js','js/debt-invoice.js','js/counter-photos.js','js/app.js','js/hesabdar-sync.js','js/vendor/xlsx.full.min.js','js/android.js'];
 fs.mkdirSync(dest, {recursive:true});
 for (const file of files) {
  const target=path.join(dest,file);fs.mkdirSync(path.dirname(target),{recursive:true});

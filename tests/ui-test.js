@@ -14,20 +14,14 @@ const context=vm.createContext({document,window,localStorage:storage,Blob,URL,Fo
  navigator:{locks:{request:async(n,o,fn)=>fn({name:n})}},
  addEventListener:(n,fn)=>listeners[n]=fn,setInterval:fn=>1,setTimeout:fn=>{timers.push(fn);return timers.length},clearTimeout(){},
  requestAnimationFrame(fn){frames.set(++frameSequence,fn);return frameSequence},cancelAnimationFrame(id){frames.delete(id)},confirm:()=>false,fetch:()=>{throw new Error('Unexpected external network call')}});
-const files=['js/store.js','js/safety.js','js/jdate.js','js/parser.js','js/ledger.js','js/telegram.js','js/app.js'];
+const files=['js/store.js','js/safety.js','js/jdate.js','js/parser.js','js/ledger.js','js/telegram.js','js/hesabdar-local.js','js/counter-photos.js','js/debt-invoice.js','js/app.js'];
 vm.runInContext(files.map(read).join('\n'),context);
 const execute=s=>vm.runInContext(s,context);
 assert.ok(query('#view').innerHTML.includes('جمع بدهی‌ها'));
 assert.equal(execute('Store.writeAllowed'),true);
-// Rapid redraws keep one animation frame, including callbacks already queued by the browser.
-const counter=node();counter.dataset.n='100';counter.isConnected=true;
-document.querySelectorAll=s=>s==='[data-n]'?[counter]:[];
-execute('anim()');const staleFrame=[...frames.values()][0];
-for(let i=0;i<300;i++)execute('anim()');
-assert.equal(frames.size,1,'redraws must cancel prior counter animations');
-staleFrame(400);assert.equal(frames.size,1,'stale callback must not restart animation');
-const finish=[...frames.values()][0];frames.clear();finish(1000);assert.equal(frames.size,0);
-assert.equal(counter.textContent,'۱۰۰');document.querySelectorAll=()=>[];
+// Routine redraws do not schedule number or transition animation frames.
+for(let i=0;i<30;i++)execute('render()');
+assert.equal(frames.size,0);
 // Calendar month boundaries, leap Esfand, invalid input and bounded daily log DOM.
 execute("tab='log';selectLogDay(J.ts([1403,12,30],0))");
 const flushFrames=()=>{const batch=[...frames.values()];frames.clear();for(const fn of batch)fn(1000)};
@@ -52,6 +46,7 @@ context.originalLog=originalLog;execute('Store.d.log=originalLog');
 const persisted=storage.getItem('nasie'),startDay=execute('ld');
 for(let i=0;i<1000;i++)execute(`shiftLogDay(${i%2?-1:1})`);
 assert.equal(frames.size,1,'rapid day navigation coalesces into one redraw');flushFrames();
+assert.doesNotMatch(query('#view').innerHTML,/entry-date-notice/);
 assert.equal(execute('ld'),startDay);assert.equal(storage.getItem('nasie'),persisted,'date navigation cannot change saved accounts');
 execute("tab='dash';render()");
 execute("const customer=Store.addC('آزمایشی');");
@@ -91,13 +86,11 @@ query('input[name=cs]:checked').value='0';query('input[name=ty]:checked').value=
 query('#voice-amount').value='50000';query('#dd').value='';
 execute('okCmd();okCmd()');assert.equal(execute('Store.d.tx.length'),2);assert.equal(execute('Store.bal(customer.id)'),-40000);
 execute("setv('token','fixture-token');setv('chat','fixture-chat');setv('aiKey','fixture-api-key')");
-const lockedSettings=execute('vSet()');
-assert.ok(!lockedSettings.includes('fixture-token')&&!lockedSettings.includes('fixture-chat')&&!lockedSettings.includes('fixture-api-key'),'saved secrets must not be in locked DOM');
-execute('settingsEditing=true');
 const settings=execute('vSet()');
-assert.ok(settings.includes('fixture-token')&&settings.includes('fixture-chat'));
-assert.ok(settings.includes('بکاپ کامل JSON'));assert.ok(settings.includes('دانلود JSON'));
-assert.ok(settings.includes('بازیابی آخرین وضعیت سالم'));
+assert.ok(!settings.includes('fixture-token')&&!settings.includes('fixture-chat')&&!settings.includes('fixture-api-key'),'saved secrets are absent from settings markup');
+for(const label of ['دستیار صوتی','سرویس و کلید API','ربات تلگرام','بکاپ شبانه','بکاپ و بازیابی'])assert.ok(settings.includes(label));
+assert.equal((settings.match(/دریافت بکاپ JSON/g)||[]).length,1);
+assert.ok(settings.includes('بازیابی JSON'));
 // All generated inline handlers must compile, including recovery controls.
 for(const match of settings.matchAll(/(?:onclick|onchange)="([^"]*)"/g)){
  const handler=match[1].replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');new Function(handler);
@@ -118,7 +111,7 @@ query('input[name=cs]:checked').value='0';query('input[name=ty]:checked').value=
 assert.equal(execute('localDay(Store.d.tx.at(-1).date)'),chosenDay,'voice uses selected calendar date');
 execute("tab='dash';render();tab='log';render()");
 assert.equal(execute('entryDay'),null);assert.equal(execute('localDay(ld)'),execute('localDay(Date.now())'));
-assert.equal(execute('settingsEditing'),false);
+assert.doesNotMatch(query('#view').innerHTML,/entry-date-notice/);
 const before=storage.getItem('nasie');
 const input={value:'backup.json',files:[{text:async()=>JSON.stringify({schema:2,customers:[],tx:[],trash:[],set:{},log:[],voiceLog:[],alerts:{}})}]};
 context.testInput=input;

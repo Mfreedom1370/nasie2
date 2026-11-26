@@ -1,11 +1,28 @@
-// nasie-release:23
+// nasie-release:30
 // موتور دفتر: وضعیت هر بدهی با روش FIFO، سررسید واقعی، سن بدهی و قدیمی‌ترین بدهی باز.
 // پرداخت‌ها (و تعدیل‌های منفی) ابتدا روی قدیمی‌ترین بدهی باز اعمال می‌شوند؛ dueDate هیچ بدهی با پرداخت جزئی تغییر نمی‌کند.
 const Ledger={_c:new Map(),_v:-1,
+ _index:null,
+ index(){
+  const data=Store.d;
+  if(!Store._depth&&this._index?.data===data&&this._index.version===Store.ver&&this._index.length===data.tx.length)return this._index;
+  const entries=new Map(),balances=new Map();
+  for(const tx of Store.live()){
+   const group=entries.get(tx.customerId);
+   if(group)group.push(tx);else entries.set(tx.customerId,[tx]);
+   balances.set(tx.customerId,(balances.get(tx.customerId)??0)+Store.sgn(tx));
+  }
+  const index={data,version:Store.ver,length:data.tx.length,entries,balances};
+  if(!Store._depth)this._index=index;
+  return index;
+ },
+ entries(cid){return this.index().entries.get(cid)??[]},
+ balance(cid){return this.index().balances.get(cid)??0},
+ total(){const balances=this.index().balances;return Store.d.customers.reduce((sum,c)=>sum+Math.max(0,balances.get(c.id)??0),0)},
  day(ts){const d=new Date(ts);d.setHours(0,0,0,0);return d.getTime()},
  analyze(cid,now){
   const cached=now===undefined;if(cached){if(this._v!==Store.ver){this._c.clear();this._v=Store.ver}const h=this._c.get(cid);if(h&&h.k===this.day(Date.now()))return h.r}
-  const n=cached?Date.now():now,today=this.day(n),c=Store.d.customers.find(x=>x.id===cid)||{},txs=Store.live().filter(t=>t.customerId===cid&&this.day(t.date)<=today);   // فقط تراکنش‌های تا امروز
+  const n=cached?Date.now():now,today=this.day(n),next=new Date(today),tomorrow=next.setDate(next.getDate()+1),c=Store.d.customers.find(x=>x.id===cid)||{},txs=this.entries(cid).filter(t=>t.date<tomorrow);   // فقط تراکنش‌های تا امروز
   const debts=txs.filter(t=>t.type==='credit'||(t.type==='adjustment'&&t.amount>0)).sort((a,b)=>a.date-b.date||a.createdAt-b.createdAt)
    .map(t=>({id:t.id,tx:t,amount:t.amount,date:t.date,dueDate:t.dueDate||null,paid:0,remaining:t.amount,state:'paid',overdueDays:0,daysLeft:0}));
   const pays=txs.filter(t=>t.type==='payment'||(t.type==='adjustment'&&t.amount<0));
