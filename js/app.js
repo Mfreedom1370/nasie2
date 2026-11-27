@@ -1,4 +1,4 @@
-// nasie-release:31
+// nasie-release:32
 Store.load();
 function storageError(e){const error=e.error||e.reason;if(!error?.storeError)return;e.preventDefault();render();toast(error.message);clearTimeout(toast.h);toast.h=setTimeout(()=>$('#toast').hidden=true,10000)}
 addEventListener('error',storageError);addEventListener('unhandledrejection',storageError);
@@ -14,7 +14,7 @@ function dueLbl(c){const a=an(c);if(a.overdueDays>0)return[`${fmt(a.overdueDays)
 const dsLbl=d=>d.state==='overdue'?`${fmt(d.overdueDays)} روز دیرکرد`:d.state==='today'?'امروز سررسید':d.state==='notdue'?`${fmt(d.daysLeft)} روز تا سررسید`:'بدون سررسید';
 const st=(c,b)=>b<=0?'ok':b>lim(c)?'bad':an(c).overdue.length?'warn':'';
 const sumTx=(id,f)=>Ledger.entries(id).reduce((sum,t)=>sum+(f(t)?Math.abs(t.amt):0),0);
-const LT={'c+':e=>`➕ مشتری جدید: ${e.n}`,'c~':e=>`✏️ ویرایش پروفایل: ${e.n}`,'c-':e=>`🗑 حذف مشتری: ${e.n}`,tx:e=>`${e.a>0?'🔴 نسیه':'🟢 پرداخت'} ${fmt(e.a)} — ${e.n}`,'tx-':e=>`🗑 حذف ثبت ${fmt(e.a)} — ${e.n}`,rs:e=>`♻️ بازیابی: ${e.n}`};
+const LT={'c+':e=>`➕ مشتری جدید: ${e.n}`,'c~':e=>`✏️ ویرایش پروفایل: ${e.n}`,'c-':e=>`🗑 حذف مشتری: ${e.n}`,tx:e=>`${e.a>0?'🔴 نسیه':'🟢 پرداخت'} ${fmt(e.a)} — ${e.n}`,'tx~':e=>`ویرایش ثبت ${e.n} · ${fmt(e.a)} تومان`,'tx-':e=>`🗑 حذف ثبت ${fmt(e.a)} — ${e.n}`,rs:e=>`♻️ بازیابی: ${e.n}`};
 const logText=e=>(LT[e.t]||(()=>e.t))(e);
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3000)}
 function sheet(h){hideCmdSuggestions();if(cmd)cmd.open=false;$('#sheet').innerHTML=`<div class="sh"><div class="xrow"><button class="x" onclick="dismiss()" aria-label="بستن">✕</button></div><div class="box">${h}</div></div>`;$('#sheet').hidden=false}
@@ -99,28 +99,57 @@ function formatMoneyInput(input){
  input.value=next;
  if(offset!==null){let pos=0,count=0;while(pos<next.length&&count<offset){if(next[pos]!==',')count++;pos++}input.setSelectionRange?.(pos,pos)}
 }
-const PROFILE_PAGE=30;
-function growHistory(button,id){
- const box=button.closest('.box');
- box.historyLimit=(box.historyLimit??PROFILE_PAGE)+PROFILE_PAGE;
- profile(id,box);
+const PROFILE_PAGE=10;
+function historyMonth(date){
+ const [year,month]=logJalali(date);
+ return {key:year*100+month,label:`${JM[month-1]} ${year.toLocaleString('fa-IR',{useGrouping:false})}`};
 }
-function profile(id,existingBox){const c=find(id),b=Ledger.balance(id);if(!c)return;const a=an(c),[dl,dc]=dueLbl(c),od=a.oldestUnpaidDebt,history=Ledger.entries(id),limit=existingBox?.historyLimit??PROFILE_PAGE;
+function customerHistory(id){
+ const groups=new Map();
+ const entries=Ledger.entries(id).slice().reverse().sort((a,b)=>b.date-a.date||b.createdAt-a.createdAt);
+ for(const entry of entries){
+  const {key,label}=historyMonth(entry.date);
+  if(!groups.has(key))groups.set(key,{label,entries:[]});
+  groups.get(key).entries.push(entry);
+ }
+ return groups;
+}
+function historyRows(entries){
+ return entries.map(t=>`<div class="tx history-row"><div class="counter-tx-description">${dt(t.date)} · ${TYPE[t.type]} <small>${esc(t.description)}${t.meta?.revisions?.length?' · ویرایش‌شده':''}</small>${CounterPhotos.linked(t.id)}</div><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button type="button" aria-label="حذف ثبت" onclick="delTx('${t.id}','${t.customerId}')">🗑</button></div>`).join('');
+}
+function fillCustomerHistory(panel,reset){
+ const entries=panel.months.get(+panel.querySelector('select').value)?.entries??[];
+ const scroll=panel.querySelector('.history-scroll');
+ if(reset){panel.shown=0;scroll.innerHTML='';scroll.scrollTop=0;}
+ if(panel.shown>=entries.length)return;
+ scroll.insertAdjacentHTML('beforeend',historyRows(entries.slice(panel.shown,panel.shown+PROFILE_PAGE)));
+ panel.shown+=PROFILE_PAGE;
+}
+function scrollCustomerHistory(scroll){
+ if(scroll.scrollTop+scroll.clientHeight>=scroll.scrollHeight-48)fillCustomerHistory(scroll.closest('.customer-history'),false);
+}
+function mountCustomerHistory(box,months,selected){
+ const panel=box?.querySelector?.('.customer-history');
+ if(!panel||!months.size)return;
+ panel.months=months;
+ const select=panel.querySelector('select');
+ if(months.has(+selected))select.value=selected;
+ fillCustomerHistory(panel,true);
+}
+function profile(id,existingBox){const c=find(id),b=Ledger.balance(id);if(!c)return;
+ const months=customerHistory(id),selected=existingBox?.querySelector?.('.customer-history select')?.value;
  const content=`<div class="ph customer-header"><div class="av">${esc(c.name[0]||'؟')}</div><div class="customer-identity"><h2>${esc(c.name)}</h2><small>${c.alias?'«'+esc(c.alias)+'» · ':''}${c.guest?'مشتری موقت · ':''}${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'بدون شماره'}</small></div><div class="amt header-balance ${st(c,b)}"><b>${fmt(b)}</b><small>تومان${b<0?' (بستانکار)':''}</small></div></div>
- ${DebtInvoice.button(id,'ledger')}${CounterPhotos.button(id)}<div class="kpis"><div><small>کل نسیه</small><b>${fmt(sumTx(id,t=>t.amt>0)+(c.prevLoan||0))}</b></div><div><small>کل پرداخت</small><b>${fmt(sumTx(id,t=>t.amt<0)+(c.prevPay||0))}</b></div>
- <div><small>روز از آخرین پرداخت</small><b>${a.daysSinceLastPayment==null?'—':fmt(a.daysSinceLastPayment)}</b></div><div><small>روز از قدیمی‌ترین بدهی</small><b>${a.daysSinceOldestDebt==null?'—':fmt(a.daysSinceOldestDebt)}</b></div></div>
- ${(()=>{const k=Ledger.risk(id);return`<p class="note rk-${k.level}">ریسک: ${RL[k.level]} (${fmt(k.score)} از ۱۰۰) — ${esc(k.reasons.join(' · '))}</p>`})()}
- ${dl?`<p class="note ${dc}">${dl}${od?' · قدیمی‌ترین بدهی باز: '+dt(od.date)+' (مانده '+fmt(od.remaining)+')':''}</p>`:''}
- <small>حد بدهی: ${fmt(lim(c))} · مهلت پیش‌فرض: ${fmt(dys(c))} روز</small>${c.note?`<p class="note">${esc(c.note)}</p>`:''}
- ${a.open.length?`<label>بدهی‌های باز (پرداخت‌ها به‌ترتیب قدیمی‌ترین تسویه می‌شوند)</label>${[...a.open].reverse().sort((a,b)=>b.date-a.date||b.tx.createdAt-a.tx.createdAt).map(d=>`<div class="tx"><span>${dt(d.date)} · سررسید ${d.dueDate?dt(d.dueDate):'—'}<small class="${d.state==='overdue'||d.state==='today'?'warn':''}">${dsLbl(d)}</small></span><b>${fmt(d.remaining)} <small>از ${fmt(d.amount)}</small></b></div>`).join('')}`:''}
- <label>ثبت دستی <small>تاریخ: ${dt(entryTime())}</small></label><div class="row"><input id="ma" type="text" inputmode="numeric" oninput="formatMoneyInput(this)" placeholder="مبلغ (تومان)"><input id="mn" placeholder="توضیح"></div>
- <div class="row"><input id="md" type="number" inputmode="numeric" placeholder="مهلت (روز) — خالی = ${fmt(dys(c))}"></div>
- <div class="row"><button class="pri" onclick="manual('${id}',1,this)">+ نسیه</button><button onclick="manual('${id}',-1,this)">− پرداخت</button></div>
- <label>تاریخچه</label>${history.slice().reverse().sort((a,b)=>b.date-a.date||b.createdAt-a.createdAt).slice(0,limit).map(t=>`<div class="tx"><div class="counter-tx-description">${dt(t.date)} ${TYPE[t.type]} <small>${SRC[t.source]||''}${t.source==='voice'&&t.meta&&t.meta.confirmed?' · تایید شد ✔':''} ${esc(t.description)}</small>${CounterPhotos.linked(t.id)}</div><b class="${t.amt<0?'ok':''}">${t.amt<0?'−':'+'}${fmt(t.amt)}</b><button onclick="delTx('${t.id}','${id}')">🗑</button></div>`).join('')||'<small>هنوز ثبتی نیست</small>'}${history.length>limit?`<button type="button" onclick="growHistory(this,'${id}')">ثبت‌های قدیمی‌تر</button>`:''}
- <div class="row">${LL?'<button onclick="listBy(LL)">◀ بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button><button onclick="closeSheet()">بستن</button></div>`;
- if(existingBox){const position=existingBox.scrollTop;existingBox.innerHTML=content;existingBox.scrollTop=position;}
- else {sheet(content);$('#sheet .sh')?.classList.add('customer-sheet');}
+ <section class="customer-entry"><h3>ثبت نسیه و پرداخت <small>${dt(entryTime())}</small></h3>
+ <div class="row"><input id="ma" type="text" inputmode="numeric" oninput="formatMoneyInput(this)" placeholder="مبلغ (تومان)" aria-label="مبلغ"><input id="mn" placeholder="توضیح" aria-label="توضیح"></div>
+ <div class="row"><input id="md" type="number" inputmode="numeric" placeholder="مهلت (روز) — خالی = ${fmt(dys(c))}" aria-label="مهلت پرداخت"></div>
+ <div class="row"><button class="pri" onclick="manual('${id}',1,this)">+ نسیه</button><button onclick="manual('${id}',-1,this)">− پرداخت</button></div></section>
+ <section class="customer-history"><header><h3>تاریخچه</h3>${months.size?`<select aria-label="ماه تاریخچه" onchange="fillCustomerHistory(this.closest('.customer-history'),true)">${[...months].map(([key,m])=>`<option value="${key}">${m.label}</option>`).join('')}</select>`:''}</header><div class="history-scroll" tabindex="0" onscroll="scrollCustomerHistory(this)">${months.size?'':'<small>هنوز ثبتی نیست</small>'}</div></section>
+ <div class="row">${DebtInvoice.button(id,'ledger')}${CounterPhotos.button(id)}${LL?'<button onclick="listBy(LL)">بازگشت به لیست</button>':''}<button onclick="editForm('${id}')">ویرایش پروفایل</button></div>
+ <details class="customer-details"><summary>جزئیات حساب</summary><small>کل نسیه ${fmt(sumTx(id,t=>t.amt>0)+(c.prevLoan||0))} · کل پرداخت ${fmt(sumTx(id,t=>t.amt<0)+(c.prevPay||0))}</small><small>حد بدهی ${fmt(lim(c))} · مهلت پیش‌فرض ${fmt(dys(c))} روز</small>${c.note?`<p>${esc(c.note)}</p>`:''}</details>`;
+ if(existingBox){const position=existingBox.scrollTop;existingBox.innerHTML=content;mountCustomerHistory(existingBox,months,selected);existingBox.scrollTop=position;}
+ else {sheet(content);$('#sheet .sh')?.classList.add('customer-sheet');mountCustomerHistory($('#sheet .box'),months);}
 }
+
 let manualPending=false;
 function manual(id,sg,button){if(manualPending)return;const a=Number(norm($('#ma').value));if(!Number.isSafeInteger(a)||a<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن');
  const due=$('#md').value.trim(),dd=Number(due);if(due&&(!Number.isSafeInteger(dd)||dd<=0))return toast('مهلت باید تعداد روز صحیح و مثبت باشد');const now=entryTime();
@@ -181,12 +210,66 @@ function logCalendar(){const [y,m]=logMonth||logJalali().slice(0,2),start=J.ts([
  return`<section class="log-calendar box2" aria-label="تقویم شمسی"><div class="calendar-heading"><b>تقویم شمسی</b><small>برای دیدن تغییرات، روز را انتخاب کن</small></div>
  <div class="calendar-controls"><button onclick="shiftLogMonth(-1)" aria-label="ماه قبل">‹</button><select id="log-calendar-month" aria-label="ماه" onchange="changeLogMonth($('#log-calendar-year').value,this.value)">${JM.map((name,i)=>`<option value="${i+1}" ${i+1===m?'selected':''}>${name}</option>`).join('')}</select><input id="log-calendar-year" inputmode="numeric" aria-label="سال شمسی" value="${y}" onchange="changeLogMonth(this.value,$('#log-calendar-month').value)"><button onclick="shiftLogMonth(1)" aria-label="ماه بعد">›</button></div>
  <div class="calendar-grid calendar-weekdays">${['ش','ی','د','س','چ','پ','ج'].map(x=>`<span>${x}</span>`).join('')}</div><div class="calendar-grid">${cells.join('')}</div></section>`}
-function vLog(){const end=followingDay(ld),L=Store.d.log.filter(x=>(x.entryDate??x.ts)>=ld&&(x.entryDate??x.ts)<end).sort((a,b)=>b.ts-a.ts),s=f=>L.filter(f).reduce((a,x)=>a+Math.abs(x.a),0);
+function logTransaction(event,byId,dayEntries){
+ if(event.t!=='tx'&&event.t!=='tx~')return null;
+ if(event.txId)return byId.get(event.txId)??null;
+ const candidates=dayEntries.filter(tx=>tx.date===(event.entryDate??event.ts)&&tx.amt===event.a&&Store.nm(tx.customerId)===event.n);
+ if(candidates.length===1)return candidates[0];
+ const exact=candidates.filter(tx=>tx.createdAt===event.ts);
+ return exact.length===1?exact[0]:null;
+}
+function correctedTransactionDate(value,original){
+ const date=String(value).trim().replace(/[۰-۹٠-٩]/g,d=>String(d.charCodeAt(0)-(d>='۰'?0x6f0:0x660))).match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+ if(!date)return null;
+ const [year,month,day]=date.slice(1).map(Number);
+ if(year<1200||year>1600||month<1||month>12||day<1||day>31)return null;
+ const key=[year,month,day].join('/');
+ if(logJalali(original).join('/')===key)return original;
+ const old=new Date(original),next=new Date(J.ts([year,month,day],old.getHours(),old.getMinutes()));
+ if(logJalali(+next).join('/')!==key)return null;
+ return next.setSeconds(old.getSeconds(),old.getMilliseconds());
+}
+function editLogTransaction(index){
+ const entries=Store.live(),event=Store.d.log[index];
+ if(!event)return;
+ const tx=logTransaction(event,new Map(entries.map(t=>[t.id,t])),entries.filter(t=>localDay(t.date)===ld));
+ if(!tx||tx.type==='adjustment')return toast('این ثبت برای ویرایش در دسترس نیست.');
+ sheet(`<form class="edit-log-form" id="edit-log-form"><h2>ویرایش ${TYPE[tx.type]}</h2><p>${esc(Store.nm(tx.customerId))} · ${dt(tx.date)}</p>
+ <label>مبلغ (تومان)<input name="amount" inputmode="numeric" required value="${fmt(tx.amount)}" oninput="formatMoneyInput(this)"></label>
+ <label>تاریخ شمسی<input name="date" dir="ltr" required value="${J.fa(logJalali(tx.date))}" placeholder="۱۴۰۵/۰۹/۰۶" maxlength="10"></label>
+ <label>توضیح<input name="description" value="${esc(tx.description)}" maxlength="5000"></label>
+ <div class="row"><button class="pri">ذخیرهٔ اصلاح</button><button type="button" onclick="closeSheet()">انصراف</button></div></form>`);
+ $('#edit-log-form').onsubmit=event=>{
+  event.preventDefault();
+  const fields=new FormData(event.currentTarget),amount=Number(norm(String(fields.get('amount'))));
+  if(!Number.isSafeInteger(amount)||amount<=0)return toast('مبلغ صحیح و بیشتر از صفر وارد کن.');
+  try{
+   const date=correctedTransactionDate(fields.get('date'),tx.date);
+   if(date===null)return toast('تاریخ شمسی معتبر وارد کن. نمونه: ۱۴۰۵/۰۹/۰۶');
+   const moved=localDay(date)!==localDay(tx.date);
+   Store.reviseTransaction(tx.id,amount,String(fields.get('description')).trim(),index,date);
+   closeSheet();toast(moved?'ثبت به '+dt(date)+' منتقل شد.':'اصلاح ذخیره شد.');
+  }catch(error){toast(error.message);}
+ };
+}
+
+function vLog(){
+ const end=followingDay(ld), sameDay=ts=>ts>=ld&&ts<end;
+ const dayEntries=Store.live().filter(tx=>sameDay(tx.date)),byId=new Map(dayEntries.map(tx=>[tx.id,tx]));
+ const L=Store.d.log.map((event,index)=>({event,index})).filter(({event})=>sameDay(event.entryDate??event.ts)).sort((a,b)=>b.event.ts-a.event.ts);
+ const sum=type=>dayEntries.reduce((amount,t)=>amount+(t.type===type?t.amount:0),0);
+ const entryRow=({event,index})=>{
+  const tx=logTransaction(event,byId,dayEntries);
+  const text=event.t==='tx'&&tx?logText({...event,a:tx.amt,n:Store.nm(tx.customerId)}):logText(event);
+  const content=`<time>${tm(event.ts)}</time><span>${esc(text)}</span>`;
+  return tx&&tx.type!=='adjustment'?`<button type="button" class="lgr log-entry-link" onclick="editLogTransaction(${index})">${content}<small>ویرایش</small></button>`:`<div class="lgr">${content}</div>`;
+ };
+
  const pages=Math.max(1,Math.ceil(L.length/LOG_PAGE_SIZE));logPage=Math.min(logPage,pages-1);const rows=L.slice(logPage*LOG_PAGE_SIZE,(logPage+1)*LOG_PAGE_SIZE);
  return`${logCalendar()}<div class="row log-day-controls"><button onclick="shiftLogDay(-1)">◀ روز قبل</button><button onclick="selectLogDay(Date.now())">امروز</button><button onclick="shiftLogDay(1)">روز بعد ▶</button></div>
  <h3 class="dayh">${new Date(ld).toLocaleDateString('fa-IR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</h3>
- <div class="kpis"><div><small>تعداد تغییرات</small><b>${fmt(L.length)}</b></div><div class="k-bad"><small>نسیه‌ی روز</small><b>${fmt(s(x=>x.t==='tx'&&x.a>0))}</b></div><div class="k-ok"><small>دریافتی روز</small><b>${fmt(s(x=>x.t==='tx'&&x.a<0))}</b></div></div>
- <div class="box2 log-entries">${rows.map(e=>`<div class="lgr"><time>${tm(e.ts)}</time><span>${esc(logText(e))}</span></div>`).join('')||'<small>در این روز تغییری ثبت نشده</small>'}</div>${pages>1?`<div class="row log-pagination"><button onclick="pageLog(-1)" ${logPage===0?'disabled':''}>قبلی</button><small>صفحهٔ ${fmt(logPage+1)} از ${fmt(pages)}</small><button onclick="pageLog(1)" ${logPage===pages-1?'disabled':''}>بعدی</button></div>`:''}`}
+ <div class="kpis"><div><small>تعداد تغییرات</small><b>${fmt(L.length)}</b></div><div class="k-bad"><small>نسیه‌ی روز</small><b>${fmt(sum('credit'))}</b></div><div class="k-ok"><small>دریافتی روز</small><b>${fmt(sum('payment'))}</b></div></div>
+ <div class="box2 log-entries">${rows.map(entryRow).join('')||'<small>در این روز تغییری ثبت نشده</small>'}</div>${pages>1?`<div class="row log-pagination"><button onclick="pageLog(-1)" ${logPage===0?'disabled':''}>قبلی</button><small>صفحهٔ ${fmt(logPage+1)} از ${fmt(pages)}</small><button onclick="pageLog(1)" ${logPage===pages-1?'disabled':''}>بعدی</button></div>`:''}`}
 // ---------- سطل زباله ----------
 function trashView(){const T=[...Store.d.trash].sort((a,b)=>b.ts-a.ts);
  sheet(`<h2>🗑 سطل زباله</h2><small>هر چیزی که حذف کنی اول اینجا می‌آید و قابل بازیابی است.</small>
@@ -202,7 +285,7 @@ function refreshBackupStatus(){
  const native=window.NasieAndroid,target=$('#nightly-backup-status');
  if(!native?.cloudStatus||!target)return;
  const state=native.cloudStatus();
- target.textContent=`${state.status} · فایل‌های در صف: ${fmt(state.pending||0)} · آخرین تلگرام: ${state.telegram||'—'} · آخرین درایو: ${state.drive||'—'}`;
+ target.textContent=`${state.status} · فایل‌های در صف: ${fmt(state.pending||0)} · آخرین تلگرام: ${J.fad(state.telegram||'—')} · آخرین درایو: ${J.fad(state.drive||'—')}`;
 }
 function refreshDriveIdentity(){
  const identity=window.NasieAndroid?.appIdentity();
@@ -243,7 +326,7 @@ function vSet(){
  <details ontoggle="if(this.open)refreshDriveIdentity()"><summary>اتصال گوگل‌درایو</summary><button onclick="NasieAndroid.connectDrive()">اتصال / مجوز درایو</button><small id="backup-drive-identity" dir="ltr"></small></details>`
  :'<p>بکاپ شبانه در نسخهٔ اندروید انجام می‌شود. در مرورگر، بکاپ دستی در دسترس است.</p>';
  const backupRestore=`<div class="row"><button class="pri" onclick="backup()">دریافت بکاپ JSON</button><button onclick="$('#imp').click()">بازیابی JSON</button></div>
- <small>آخرین بکاپ دستی: ${esc(s.lastBk||'—')}</small><details ontoggle="if(this.open)refreshLocalRecovery(this)"><summary>نسخه‌های محلی و ابزارهای بازیابی</summary><div data-recovery-actions></div>
+ <small>آخرین بکاپ دستی: ${s.lastBk&&Number.isFinite(Date.parse(s.lastBk))?dt(Date.parse(s.lastBk)):'—'}</small><details ontoggle="if(this.open)refreshLocalRecovery(this)"><summary>نسخه‌های محلی و ابزارهای بازیابی</summary><div data-recovery-actions></div>
  ${native?'':`<button onclick="persistStorage()">درخواست ذخیره‌سازی ماندگار مرورگر</button>`}</details>`;
  const accountDefaults=`<label>سقف بدهی پیش‌فرض (تومان)<input type="number" value="${s.limit}" onchange="setv('limit',+this.value)"></label>
  <label>مهلت پیش‌فرض پرداخت (روز)<input type="number" value="${s.days}" onchange="setv('days',+this.value)"></label>
@@ -265,7 +348,7 @@ async function importBackup(input){const file=input.files?.[0];input.value='';if
 function recoverLocal(kind){try{const raw=Store.recoveryText(kind);if(!raw)return toast('نسخه موجود نیست');const data=Store.prepare(raw);
  if(!confirm(`این نسخه شامل ${data.customers.length} مشتری و ${data.tx.length} تراکنش است. جایگزین حساب‌های فعلی شود؟`))return;
  Store.replacePrepared(data);render();toast('بازیابی کامل شد')}catch(e){toast(e.message)}}
-function downloadLocal(index){const b=Store.localBackups()[index];if(b)Store.download(b.raw,'nasie-local-'+b.ts+'.json')}
+function downloadLocal(index){const b=Store.localBackups()[index];if(b)Store.download(b.raw,'nasie-local-'+J.fileDate(b.ts,true)+'.json')}
 async function persistStorage(){const ok=await Store.requestPersistence();toast(ok?'ذخیره‌سازی ماندگار فعال شد؛ بکاپ خارج از گوشی همچنان لازم است':'مرورگر دسترسی ماندگار نداد؛ بکاپ خارج از گوشی نگه دار')}
 function setv(k,v){const s=Store.d.set;if(s.autoBackup&&v===false&&((k==='backupTelegram'&&s.backupDrive===false)||(k==='backupDrive'&&s.backupTelegram===false))){toast('برای خاموش کردن هر دو مقصد، اول بکاپ خودکار را خاموش کن');render();return;}if(k==='autoBackup'&&v&&s.backupTelegram===false&&s.backupDrive===false)return toast('حداقل یک مقصد بکاپ را انتخاب کن');s[k]=v;enableNightlyTelegram();Store.save()}
 const loadX=()=>window.XLSX?Promise.resolve():new Promise((ok,no)=>{const s=document.createElement('script');s.src='js/vendor/xlsx.full.min.js';s.onload=ok;s.onerror=()=>{s.remove();const f=document.createElement('script');f.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';f.onload=ok;f.onerror=no;document.head.appendChild(f)};document.head.appendChild(s)});
@@ -274,7 +357,7 @@ async function excelBackup(){try{await loadX()}catch(e){return toast('برای �
  add(D.customers.map(c=>({نام:c.name,'اسم مستعار':c.alias||'',تلفن:c.phone||'',نوع:c.guest?'مهمان':'مشتری',مانده:Ledger.balance(c.id)})),'مشتریان');
  add(D.tx.map(t=>({تاریخ:dt(t.date),مشتری:Store.nm(t.customerId),مبلغ:t.amt,نوع:TYPE[t.type],سررسید:t.dueDate?dt(t.dueDate):'',منبع:t.source,وضعیت:t.status,توضیح:t.description})),'ثبت‌ها');
  add(D.log.map(e=>({زمان:dt(e.ts)+' '+tm(e.ts),شرح:logText(e)})),'تغییرات');
- const name=`nasie-${new Date().toISOString().slice(0,10)}.xlsx`,blob=new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/octet-stream'}),a=document.createElement('a');
+ const name=`nasie-${J.fileDate(Date.now(),true)}.xlsx`,blob=new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/octet-stream'}),a=document.createElement('a');
  if(window.NasieAndroid)await window.NasieAndroid.exportBlob(blob,name);else{const downloadUrl=URL.createObjectURL(blob);a.href=downloadUrl;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(downloadUrl),60000)}
  const s=D.set;if(s.token&&s.chat){const f=new FormData();f.append('chat_id',s.chat);f.append('document',blob,name);
   try{const r=await fetch(`https://api.telegram.org/bot${s.token}/sendDocument`,{method:'POST',body:f});toast(r.ok?'گزارش به تلگرام ارسال شد؛ دانلود گوشی را هم بررسی کن':'دانلود گزارش درخواست شد؛ ارسال تلگرام ناموفق بود')}catch(e){toast('دانلود گزارش درخواست شد؛ تلگرام در دسترس نیست')}}else toast('دانلود گزارش اکسل درخواست شد؛ وجود فایل را بررسی کن');render()}

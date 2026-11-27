@@ -299,3 +299,24 @@ nav,.cmd,.aibar,.cf-foot{background:#142b39}
 .settings-body small{display:block;margin-block:8px;color:var(--muted)}
 .settings-body .row{flex-wrap:wrap}
 .settings-body details{margin-block:10px}
+
+.customer-sheet .customer-header{position:static;border:1px solid var(--bd);border-radius:18px;padding:12px 14px;margin:4px 0 10px}
+.customer-entry,.customer-history{border:1px solid var(--bd);border-radius:16px;padding:12px 14px;margin:0 0 10px;background:#132c3a}
+.customer-entry h3,.customer-history h3{font-size:14px;margin:0 0 8px}
+.customer-entry h3 small{margin-inline-start:6px;color:var(--muted);font-weight:400}
+.customer-history header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:6px}
+.customer-history header h3{margin:0}
+.customer-history select{width:auto;max-width:65%;padding:6px 10px}
+.history-scroll{max-height:min(48dvh,430px);overflow-y:auto;overscroll-behavior:contain;padding-inline-end:5px}
+.history-row{min-height:48px}
+.history-row .counter-tx-description{flex:1;min-width:0;overflow-wrap:anywhere}
+.customer-details{margin-top:8px}
+.customer-details small{display:block;margin-top:5px}
+.log-entry-link.lgr{width:100%;color:inherit;text-align:right;border-radius:10px;background:rgba(255,255,255,.06);margin-block:4px;padding-inline:8px}
+.log-entry-link small{margin-inline-start:auto;color:var(--ac)}
+.edit-log-form label{display:grid;gap:5px;margin-block:9px}
+@media(max-width:759px){
+ nav{bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+ .cmd,.aibar{bottom:calc(112px + env(safe-area-inset-bottom,0px))}
+ .screen{padding-bottom:197px}
+}

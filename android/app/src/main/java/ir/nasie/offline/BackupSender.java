@@ -17,6 +17,10 @@ public final class BackupSender extends Worker {
   for(File file:jobs){if(stopped.getAsBoolean())return true;settings=BackupEngine.ledger(c).getJSONObject("set");if(!settings.optBoolean("autoBackup"))return false;if(++count>3){retry=true;break;}JSONObject job;
    try{job=BackupEngine.read(file);if(!BackupEngine.hash(job.getString("raw")).equals(job.getString("hash")))throw new Exception("snapshot checksum");}
    catch(Exception e){retry=true;BackupEngine.status(c,"یک نسخهٔ صف آسیب دیده؛ حفظ شد و ارسال سایر نسخه‌ها ادامه می‌یابد");continue;}
+   String day=job.optString("day");
+   if(day.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")){
+    try{job.put("name",BackupEngine.nightFileName(day));}catch(java.time.DateTimeException ignored){}
+   }
    if(!job.optBoolean("telegram")&&!job.optBoolean("drive")){retry=true;continue;}
    if(job.optBoolean("telegram")&&!job.optBoolean("telegramDone"))try{if(!settings.optBoolean("backupTelegram",true))throw new Exception();String date=job.optString("day");
     boolean daily=date.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}");

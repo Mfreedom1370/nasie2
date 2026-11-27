@@ -1,4 +1,4 @@
-// nasie-release:31
+// nasie-release:32
 // Safety layer: keep schema 2 and existing ledger APIs, commit or roll back each operation.
 (() => {
  const clone=x=>JSON.parse(JSON.stringify(x));
@@ -74,6 +74,32 @@
   batch(fn){if(this._depth)return fn();this.ensureWrite();const before=clone(this.d);this._depth=1;this._dirty=false;
    try{const result=fn();this._depth=0;if(this._dirty)this.save();return result}catch(e){this._depth=0;this._dirty=false;this.d=before;this.ver++;throw e}
   },
+  reviseTransaction(id,amount,description,logIndex,date){
+   if(!number(amount,1)||typeof description!=='string'||description.length>5000)fail('مبلغ یا توضیح معتبر نیست.');
+   return this.batch(()=>{
+    const tx=this.live().find(entry=>entry.id===id);
+    if(!tx||tx.type==='adjustment')fail('ثبت برای ویرایش در دسترس نیست.');
+    const nextDate=date??tx.date;
+    if(!number(nextDate,1))fail('تاریخ ثبت معتبر نیست.');
+    if(tx.amount===amount&&tx.description===description&&tx.date===nextDate)return false;
+    const before={amount:tx.amount,description:tx.description,date:tx.date,dueDate:tx.dueDate,at:Date.now()};
+    tx.meta={...tx.meta,revisions:[...(tx.meta?.revisions??[]),before]};
+    if(tx.dueDate&&tx.date!==nextDate){
+     const old=new Date(tx.date),next=new Date(nextDate),due=new Date(tx.dueDate);
+     const civilDay=d=>Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());
+     due.setDate(due.getDate()+(civilDay(next)-civilDay(old))/DAY);
+     tx.dueDate=due.getTime();
+    }
+    tx.amount=amount;tx.description=description;tx.date=nextDate;this.mirror(tx);
+    const anchor=this.d.log[logIndex];
+    if(anchor?.t==='tx'&&!anchor.txId)anchor.txId=id;
+    if(before.date!==nextDate)for(const entry of this.d.log){
+     if(entry.txId===id&&(entry.t==='tx'||entry.t==='tx~'))entry.entryDate=nextDate;
+    }
+    this.log('tx~',this.nm(tx.customerId),this.sgn(tx),tx.date,id);
+    this.save();return true;
+   });
+  },
   replacePrepared(data){this.ensureWrite(true);this.validate(data);const current=localStorage.getItem('nasie');if(current!==this._baseRaw)fail('حساب‌ها تغییر کرده‌اند؛ قبل از بازیابی صفحه را دوباره باز کن');
    // A failed safety backup prevents the destructive replacement entirely.
    try{if(current!==null)localStorage.setItem('nasie_before_restore',current)}catch(e){fail('نسخه برگشت ذخیره نشد؛ بازیابی انجام نشد. ابتدا خروجی JSON بگیر و فضای حافظه را بررسی کن.')}
@@ -84,7 +110,7 @@
   hasInternalBackup(){return !!safeGet('nasie_pre_v2_backup')},
   backupText(){if(this.blocked){if(typeof this._baseRaw==='string')return this._baseRaw;const raw=safeGet('nasie_corrupt_backup');if(raw!==null)return raw;fail('اطلاعات اصلی در دسترس نیست؛ خروجی خالی ساخته نشد. دسترسی حافظه را بررسی کن')}return JSON.stringify(this.validate(this.d))},
   download(text,name,type='application/json'){if(window.NasieAndroid)return window.NasieAndroid.exportText(text,name,type);const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)},
-  exportJson(){this.download(this.backupText(),'nasie-backup-'+Date.now()+'.json')},
+  exportJson(){this.download(this.backupText(),'nasie-backup-'+J.fileDate(Date.now(),true)+'.json')},
   localBackups(){try{const a=JSON.parse(safeGet('nasie_daily_backups')||'[]');return Array.isArray(a)?a.filter(x=>plain(x)&&typeof x.raw==='string'&&typeof x.day==='string'):[]}catch(e){return []}},
   scheduleCheckpoint(){
    if(typeof window==='undefined'||!window.NasieAndroid||typeof setTimeout!=='function')return this.checkpoint();

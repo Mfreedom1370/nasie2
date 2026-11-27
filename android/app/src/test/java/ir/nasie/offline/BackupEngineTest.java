@@ -40,6 +40,8 @@ public class BackupEngineTest {
   BackupEngine.write(ledger,new JSONObject().put("nasie","{}"));try{BackupSender.runPending(context,null,()->false);fail("invalid ledger accepted");}catch(Exception expected){assertTrue(job.exists());}
  }
  @Test public void nightlyCutoffKeepsTodayUntilNightAndCatchesUpOlderDays(){
+  assertEquals("nasie-1405-09-06.json",BackupEngine.nightFileName("2026-11-27"));
+  assertEquals("1405-01-01",BackupEngine.displayDay("2026-03-21"));
   assertFalse(BackupEngine.due("2026-11-15","2026-11-15",21));
   assertTrue(BackupEngine.due("2026-11-15","2026-11-15",22));
   assertTrue(BackupEngine.due("2026-11-14","2026-11-15",1));
@@ -60,7 +62,9 @@ public class BackupEngineTest {
   BackupEngine.write(duplicate,first.put("name","second.json"));
   final int[] sent={0};
   BackupSender.Delivery delivery=new BackupSender.Delivery(){
-   public void telegram(JSONObject snapshot,JSONObject settings){sent[0]++;}
+   public void telegram(JSONObject snapshot,JSONObject settings)throws Exception{
+    assertEquals("nasie-1405-08-24.json",snapshot.getString("name"));sent[0]++;
+   }
    public void drive(Context c,JSONObject snapshot){fail("Drive was not selected");}
   };
   assertFalse(BackupSender.runPending(context,delivery,()->false));

@@ -1,4 +1,4 @@
-// nasie-release:31
+// nasie-release:32
 // تبدیل تاریخ شمسی ⇄ میلادی (الگوریتم jalaali)
 const J=(()=>{
  const g2j=(gy,gm,gd)=>{const gdm=[0,31,59,90,120,151,181,212,243,273,304,334];let jy=gy<=1600?0:979;gy-=gy<=1600?621:1600;
@@ -16,5 +16,10 @@ const J=(()=>{
  return{g2j,j2g,
   today(){const d=new Date();return g2j(d.getFullYear(),d.getMonth()+1,d.getDate())},
   ago(n){const d=new Date();d.setDate(d.getDate()-n);return g2j(d.getFullYear(),d.getMonth()+1,d.getDate())},
+  fileDate(ts=Date.now(),withTime=false){
+   const d=new Date(ts),[y,m,day]=g2j(d.getFullYear(),d.getMonth()+1,d.getDate());
+   const date=`${y}-${pad(m)}-${pad(day)}`;
+   return withTime?`${date}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`:date;
+  },
   str:a=>a[0]+'/'+pad(a[1])+'/'+pad(a[2]),fa:a=>fad(a[0]+'/'+pad(a[1])+'/'+pad(a[2])),fad,
   ts(a,h=12,m=0){const g=j2g(a[0],a[1],a[2]);return new Date(g[0],g[1]-1,g[2],h,m).getTime()}}})();

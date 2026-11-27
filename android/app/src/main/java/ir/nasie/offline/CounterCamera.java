@@ -29,7 +29,7 @@ import java.net.Socket;
 import java.util.UUID;
 import javax.net.SocketFactory;
 
-@androidx.media3.common.util.UnstableApi
+@androidx.annotation.OptIn(markerClass=androidx.media3.common.util.UnstableApi.class)
 final class CounterCamera {
  interface Result { void done(String id,String error); }
  private final Context context;

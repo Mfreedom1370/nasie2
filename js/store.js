@@ -1,4 +1,4 @@
-// nasie-release:31
+// nasie-release:32
 // ذخیره‌سازی محلی — نسخه‌ی ۲ (schema 2): ساختار Transaction حرفه‌ای.
 // فیلدهای قدیمی cid/amt/note/ts به‌عنوان «آینه» نگه داشته می‌شوند تا داده‌ها و کدهای قدیمی خراب نشوند.
 // type: credit(نسیه، +) | payment(پرداخت، −) | adjustment(تعدیل، amount علامت‌دار)
@@ -32,7 +32,7 @@ const Store={d:{customers:[],tx:[],trash:[],log:[],voiceLog:[],schema:2,set:{...
  nm(id){return(this.d.customers.find(c=>c.id===id)||{}).name||'؟'},
  bal(id){return this.live().filter(t=>t.customerId===id).reduce((a,t)=>a+this.sgn(t),0)},
  total(){return this.d.customers.reduce((a,c)=>a+Math.max(0,this.bal(c.id)),0)},
- log(t,n,a,entryDate){this.d.log.push({ts:Date.now(),t,n,a,...(entryDate===undefined?{}:{entryDate})});if(this.d.log.length>8000)this.d.log.splice(0,800)},
+ log(t,n,a,entryDate,txId){this.d.log.push({ts:Date.now(),t,n,a,...(entryDate===undefined?{}:{entryDate}),...(txId?{txId}:{})});if(this.d.log.length>8000)this.d.log.splice(0,800)},
  vlog(e){const id=this.uid();this.d.voiceLog.push({id,ts:Date.now(),...e});if(this.d.voiceLog.length>300)this.d.voiceLog.splice(0,50);this.save();return id},
  vset(id,res){const v=this.d.voiceLog.find(x=>x.id===id);if(v){v.result=res;this.save()}},
  addC(name,extra){const c={id:this.uid(),name,...extra};this.d.customers.push(c);this.log('c+',name);this.save();return c},
@@ -41,7 +41,7 @@ const Store={d:{customers:[],tx:[],trash:[],log:[],voiceLog:[],schema:2,set:{...
   const t=this.mirror({id:this.uid(),customerId:o.customerId,type,amount:type==='adjustment'?(+o.amount||0):Math.abs(+o.amount||0),date,
    dueDate:o.dueDate!==undefined?o.dueDate:(type==='credit'?date+this.dueDays(o.customerId)*DAY:null),
    description:o.description||'',items:o.items||[],createdAt:now,source:o.source||'manual',status:'active'});
-  if(o.meta)t.meta=o.meta;this.d.tx.push(t);if(typeof CounterPhotos!=='undefined')CounterPhotos.movePending(t);this.log('tx',this.nm(t.customerId),this.sgn(t),t.date);this.save();return t},
+  if(o.meta)t.meta=o.meta;this.d.tx.push(t);if(typeof CounterPhotos!=='undefined')CounterPhotos.movePending(t);this.log('tx',this.nm(t.customerId),this.sgn(t),t.date,t.id);this.save();return t},
  addTx(cid,amt,note,o){return this.addTransaction({...o,customerId:cid,type:amt>0?'credit':amt<0?'payment':'adjustment',amount:Math.abs(amt),description:note})},
  cancelTx(id){const t=this.d.tx.find(x=>x.id===id);if(t){t.status='cancelled';this.log('tx-',this.nm(t.customerId),this.sgn(t));this.save()}},
  delTx(id){const t=this.d.tx.find(x=>x.id===id);if(!t)return;this.d.tx=this.d.tx.filter(x=>x.id!==id);
@@ -54,5 +54,5 @@ const Store={d:{customers:[],tx:[],trash:[],log:[],voiceLog:[],schema:2,set:{...
   else{if(!this.d.customers.some(c=>c.id===i.data.customerId))return false;this.d.tx.push(i.data);this.log('rs',this.nm(i.data.customerId))}
   this.d.trash=this.d.trash.filter(x=>x.id!==tid);this.save();return true},
  purge(tid){this.d.trash=this.d.trash.filter(x=>x.id!==tid);this.save()},
- exportJson(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(this.d)],{type:'application/json'}));a.download='nasie-backup.json';a.click()},
+ exportJson(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(this.d)],{type:'application/json'}));a.download='nasie-backup-'+J.fileDate(Date.now(),true)+'.json';a.click()},
  importJson(txt){Object.assign(this.d,JSON.parse(txt));this.migrate();this.save()}};

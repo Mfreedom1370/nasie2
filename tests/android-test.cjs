@@ -20,7 +20,7 @@ const context=vm.createContext({TextEncoder,Uint8Array,btoa:s=>Buffer.from(s,'bi
   startSpeech:id=>speechCalls.push(['start',id]),stopSpeech:(...args)=>speechCalls.push(['stop',...args])
  }});
 vm.runInContext('window=globalThis;',context);
-vm.runInContext(read('js/android.js')+read('js/store.js')+read('js/safety.js')+'\nStore.load();',context);
+vm.runInContext(read('js/android.js')+read('js/store.js')+read('js/safety.js')+read('js/jdate.js')+'\nStore.load();',context);
 const store=vm.runInContext('Store',context),native=context.NasieAndroid;
 const c=store.addC('آزمایش اندروید'),initial=disk.get('nasie');
 store.addTransaction({customerId:c.id,amount:125000});

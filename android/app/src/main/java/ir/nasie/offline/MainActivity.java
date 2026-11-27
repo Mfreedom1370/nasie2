@@ -73,10 +73,18 @@ public final class MainActivity extends Activity {
   FrameLayout frame=new FrameLayout(this);frame.setBackgroundColor(0xff07151f);frame.addView(web);setContentView(frame);
   counterCamera=new CounterCamera(this,frame);
   frame.setOnApplyWindowInsetsListener((view,insets)->{
+   if(Build.VERSION.SDK_INT>=30){
+    android.graphics.Insets bars=insets.getInsetsIgnoringVisibility(
+     android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout());
+    int keyboard=insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+    view.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,keyboard));
+    return android.view.WindowInsets.CONSUMED;
+   }
    view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),
     insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
    return insets.consumeSystemWindowInsets();
   });
+  frame.requestApplyInsets();
   WebSettings settings=web.getSettings();
   settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
   settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);

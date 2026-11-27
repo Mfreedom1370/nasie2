@@ -1,4 +1,4 @@
-// nasie-release:31
+// nasie-release:32
 (() => {
   const storageKey = 'nasie-hesabdar-connection';
   let connection = {}, timer, pending = false, sent = '', status = '';

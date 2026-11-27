@@ -22,6 +22,19 @@ final class BackupEngine {
  static final String DRIVE_SCOPE="https://www.googleapis.com/auth/drive.file";
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("cloud-backup",Context.MODE_PRIVATE);}
  static String day(){return new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date());}
+ static String jalaliDay(String isoDay){
+  java.time.LocalDate date=java.time.LocalDate.parse(isoDay);
+  android.icu.util.TimeZone utc=android.icu.util.TimeZone.getTimeZone("UTC");
+  android.icu.util.ULocale persian=new android.icu.util.ULocale("fa_IR@calendar=persian");
+  android.icu.util.Calendar calendar=android.icu.util.Calendar.getInstance(utc,persian);
+  calendar.setTimeInMillis(date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli());
+  return String.format(Locale.US,"%04d-%02d-%02d",calendar.get(android.icu.util.Calendar.YEAR),
+    calendar.get(android.icu.util.Calendar.MONTH)+1,calendar.get(android.icu.util.Calendar.DAY_OF_MONTH));
+ }
+ static String nightFileName(String isoDay){return "nasie-"+jalaliDay(isoDay)+".json";}
+ static String displayDay(String isoDay){
+  try{return jalaliDay(isoDay);}catch(java.time.DateTimeException e){return "—";}
+ }
  static File dir(Context c){File d=new File(c.getFilesDir(),"backup-outbox");if(!d.isDirectory()&&!d.mkdirs())throw new IllegalStateException("backup storage");return d;}
  static JSONObject read(File f)throws Exception{synchronized(LOCK){return new JSONObject(new String(new AtomicFile(f).readFully(),StandardCharsets.UTF_8));}}
  static void write(File f,JSONObject data)throws Exception {synchronized(LOCK){
@@ -92,8 +105,8 @@ final class BackupEngine {
     String date=stage.getString("day");
     if(!due(date,day(),hour))continue;
     if(date.compareTo(preferences.getString("queuedThrough",""))>0){
-     String name="nasie-"+date+".json";
-     File job=new File(dir(c),name+".job");
+     String name=nightFileName(date);
+     File job=new File(dir(c),"nasie-"+date+".json.job");
      if(!job.exists())write(job,stage.put("name",name).put("telegram",set.optBoolean("backupTelegram",true)).put("drive",set.optBoolean("backupDrive",true)).put("telegramDone",false).put("driveDone",false));
      if(!preferences.edit().putString("queuedThrough",date).commit())throw new IOException("backup metadata");
      queued=true;
@@ -105,7 +118,7 @@ final class BackupEngine {
  }
  static String summary(Context c){try{int count=0;File[] jobs=dir(c).listFiles((d,n)->n.endsWith(".job"));if(jobs!=null)count=jobs.length;
   return new JSONObject().put("pending",count).put("status",prefs(c).getString("status","بکاپ خودکار هنوز فعال نشده"))
-   .put("telegram",prefs(c).getString("lastTelegram","—")).put("drive",prefs(c).getString("lastDrive","—")).toString();
+   .put("telegram",displayDay(prefs(c).getString("lastTelegram",""))).put("drive",displayDay(prefs(c).getString("lastDrive",""))).toString();
  }catch(Exception e){return "{\"status\":\"وضعیت بکاپ در دسترس نیست\"}";}}
  static AuthorizationRequest driveRequest(){return AuthorizationRequest.builder().setRequestedScopes(Collections.singletonList(new Scope(DRIVE_SCOPE))).build();}
  static String response(HttpURLConnection connection)throws Exception {
